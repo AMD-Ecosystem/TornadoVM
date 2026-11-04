@@ -53,9 +53,16 @@ public final class HipRandLibraryProvider implements TornadoLibraryProvider {
             "curandGenerateUniform", HipRandLibraryProvider::generateUniform, //
             "curandGenerateUniformDouble", HipRandLibraryProvider::generateUniformDouble);
 
-    /** hipRAND's {@code hiprandRngType_t}: cuRAND's value plus 300. */
+    /** hipRAND's {@code hiprandRngType_t} for a cuRAND generator type (the values differ). */
     private static int hipRandRngType(CuRandRngType type) {
-        return type.value() + 300;
+        return switch (type) {
+            case CURAND_RNG_PSEUDO_DEFAULT -> 400;
+            case CURAND_RNG_PSEUDO_XORWOW -> 401;
+            case CURAND_RNG_PSEUDO_MRG32K3A -> 402;
+            case CURAND_RNG_PSEUDO_MTGP32 -> 403;
+            case CURAND_RNG_PSEUDO_MT19937 -> 404;
+            case CURAND_RNG_PSEUDO_PHILOX4_32_10 -> 405;
+        };
     }
 
     /** Whether hipRAND resolved on this host. */
