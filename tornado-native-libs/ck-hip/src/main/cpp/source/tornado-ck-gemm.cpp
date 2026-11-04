@@ -19,17 +19,21 @@
  *
  */
 
+#include "tornado-ck-arch.hpp"
 #include "tornado-ck-gemm.hpp"
 
 using namespace tornado_ck;
 
 namespace {
 
-/** Runs f, mapping an exception (CK reports launch errors with them) to HIP_FAILURE: none may cross the C boundary. */
+/**
+ * Runs f on a device the kernels were compiled for (NO_KERNEL on any other), mapping an exception
+ * (CK reports launch errors with them) to HIP_FAILURE: none may cross the C boundary.
+ */
 template <typename F>
 int guarded(F f) {
     try {
-        return f();
+        return currentDeviceIsCompiledTarget() ? f() : NO_KERNEL;
     } catch (...) {
         return HIP_FAILURE;
     }

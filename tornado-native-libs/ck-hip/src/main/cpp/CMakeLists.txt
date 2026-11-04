@@ -46,8 +46,8 @@ if(NOT CMAKE_HIP_COMPILER)
 endif()
 
 # The GPU architectures to build kernels for: TORNADO_CK_GPU_TARGETS (semicolon or comma separated)
-# or every architecture the CK attention kernels support. A GPU outside the list reports SDPA as
-# unsupported.
+# or every architecture the CK attention kernels support. The library records the list, and on a
+# GPU outside it the SDPA and GEMM functions report the task as unsupported.
 if(DEFINED ENV{TORNADO_CK_GPU_TARGETS} AND NOT "$ENV{TORNADO_CK_GPU_TARGETS}" STREQUAL "")
     string(REPLACE "," ";" TORNADO_CK_GPU_TARGETS "$ENV{TORNADO_CK_GPU_TARGETS}")
 else()
@@ -134,6 +134,15 @@ set(SOURCE_FILES
     "source/tornado-ck-gemm-bias-hardswish.cpp"
     ${CK_FMHA_SOURCES})
 set_source_files_properties(${SOURCE_FILES} PROPERTIES LANGUAGE HIP)
+# the processor names, without target features such as ":xnack+"
+set(CK_COMPILED_TARGETS "")
+foreach(target ${TORNADO_CK_GPU_TARGETS})
+    string(REGEX REPLACE ":.*" "" target "${target}")
+    list(APPEND CK_COMPILED_TARGETS "${target}")
+endforeach()
+string(REPLACE ";" "," CK_COMPILED_TARGETS "${CK_COMPILED_TARGETS}")
+set_source_files_properties("source/tornado-ck-sdpa.cpp" "source/tornado-ck-gemm.cpp" PROPERTIES COMPILE_DEFINITIONS
+    "TORNADO_CK_COMPILED_TARGETS=\"${CK_COMPILED_TARGETS}\"")
 add_library(tornado-ck SHARED ${SOURCE_FILES})
 
 set_target_properties(tornado-ck PROPERTIES HIP_STANDARD 20 HIP_STANDARD_REQUIRED ON)

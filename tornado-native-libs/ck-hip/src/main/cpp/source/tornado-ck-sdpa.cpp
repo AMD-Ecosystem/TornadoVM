@@ -20,6 +20,7 @@
  */
 
 #include "fmha_fwd.hpp"
+#include "tornado-ck-arch.hpp"
 
 #include <hip/hip_runtime.h>
 
@@ -40,6 +41,9 @@ int sdpaForward(hipStream_t stream, const void* q, const void* k, const void* v,
     }
     if (d % 8 != 0 || d > 256) {
         return 2;
+    }
+    if (!tornado_ck::currentDeviceIsCompiledTarget()) {
+        return 1;
     }
     fmha_fwd_traits traits{};
     traits.hdim_q = d;
