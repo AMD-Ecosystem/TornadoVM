@@ -43,7 +43,7 @@ import uk.ac.manchester.tornado.drivers.common.power.PowerMetric;
 import uk.ac.manchester.tornado.drivers.common.utils.EventDescriptor;
 import uk.ac.manchester.tornado.drivers.hip.enums.HIPDeviceType;
 import uk.ac.manchester.tornado.drivers.hip.mm.HIPMemoryManager;
-import uk.ac.manchester.tornado.drivers.hip.power.HIPEmptyPowerMetricHandler;
+import uk.ac.manchester.tornado.drivers.hip.power.HIPAMDPowerMetricHandler;
 import uk.ac.manchester.tornado.drivers.hip.runtime.HIPBufferProvider;
 import uk.ac.manchester.tornado.drivers.hip.runtime.HIPTornadoDevice;
 import uk.ac.manchester.tornado.drivers.hip.ffm.HIPDriverAPI;
@@ -130,7 +130,7 @@ public class HIPDeviceContext implements HIPDeviceContextInterface {
         this.commandQueueTable = new ConcurrentHashMap<>();
         this.device.setDeviceContext(this);
         this.executionIDs = Collections.synchronizedSet(new HashSet<>());
-        this.powerMetricHandler = new HIPEmptyPowerMetricHandler();
+        this.powerMetricHandler = new HIPAMDPowerMetricHandler(this);
         codeCache = new ConcurrentHashMap<>();
     }
 

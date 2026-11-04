@@ -98,6 +98,8 @@ public final class HIPDriverAPI {
     public static final int HIP_DEVICE_ATTRIBUTE_COMPUTE_CAPABILITY_MINOR = 61;
     public static final int HIP_DEVICE_ATTRIBUTE_MULTIPROCESSOR_COUNT = 63;
     public static final int HIP_DEVICE_ATTRIBUTE_PCI_BUS_ID = 67;
+    public static final int HIP_DEVICE_ATTRIBUTE_PCI_DEVICE_ID = 68;
+    public static final int HIP_DEVICE_ATTRIBUTE_PCI_DOMAIN_ID = 69;
     public static final int HIP_DEVICE_ATTRIBUTE_MAX_SHARED_MEMORY_PER_BLOCK = 74;
     public static final int HIP_DEVICE_ATTRIBUTE_TOTAL_CONSTANT_MEMORY = 83;
     public static final int HIP_DEVICE_ATTRIBUTE_WARP_SIZE = 87;
