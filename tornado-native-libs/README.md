@@ -56,6 +56,8 @@ never published to Maven Central.
 
 Each shim skips itself with a CMake warning when its library (cuDNN, libcudf, CUDA 12+, ROCm, hipDF) is missing.
 The matching tasks then report `UNSUPPORTED` at run time.
+`ck-hip` fetches a pinned Composable Kernel commit when it is configured; offline, set
+`TORNADO_CK_SOURCE_DIR` to a checkout of that commit (named in its `CMakeLists.txt`).
 
 ## Using a library from Maven
 

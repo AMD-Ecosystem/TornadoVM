@@ -7,9 +7,10 @@ project (TornadoCK LANGUAGES CXX)
 # FP16 attention kernels (CK tile FMHA) behind the cuDNN SDPA functions and the GEMM kernels (CK
 # device operations) behind the CUTLASS functions.
 #
-# Without ROCm, or on a generator without HIP language support (Visual Studio), the build skips this
-# library with a warning; those functions then report the task as unsupported on HIP devices. With
-# TORNADO_CK_REQUIRED set, a skipped build fails instead.
+# Without ROCm, without the Composable Kernel sources (fetched at configure time, or given with
+# TORNADO_CK_SOURCE_DIR), or on a generator without HIP language support (Visual Studio), the build
+# skips this library with a warning; those functions then report the task as unsupported on HIP
+# devices. With TORNADO_CK_REQUIRED set, a skipped build fails instead.
 macro(tornado_ck_skip reason)
     if(NOT "$ENV{TORNADO_CK_REQUIRED}" STREQUAL "" AND NOT "$ENV{TORNADO_CK_REQUIRED}" STREQUAL "0")
         message(FATAL_ERROR "TornadoVM CK: ${reason} (TORNADO_CK_REQUIRED is set, so this fails the build.)")
@@ -60,31 +61,45 @@ find_package(hip REQUIRED CONFIG)
 find_package(Python3 REQUIRED COMPONENTS Interpreter)
 
 # CK is header-only plus a code generator for the attention kernels; fetch just those two
-# directories of a pinned commit (the whole repository is large).
+# directories of a pinned commit (the whole repository is large). Offline, point
+# TORNADO_CK_SOURCE_DIR (CMake variable or environment variable) at a checkout of that commit.
 set(CK_COMMIT 9abc8908235e8a62460f81d4e54866586b3cda9d)
-set(CK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/composable_kernel-src")
-if(NOT EXISTS "${CK_SOURCE_DIR}/.tornado-${CK_COMMIT}")
-    find_package(Git REQUIRED)
+if(NOT TORNADO_CK_SOURCE_DIR AND DEFINED ENV{TORNADO_CK_SOURCE_DIR} AND NOT "$ENV{TORNADO_CK_SOURCE_DIR}" STREQUAL "")
+    set(TORNADO_CK_SOURCE_DIR "$ENV{TORNADO_CK_SOURCE_DIR}")
+endif()
+if(TORNADO_CK_SOURCE_DIR)
+    file(TO_CMAKE_PATH "${TORNADO_CK_SOURCE_DIR}" CK_SOURCE_DIR)
+    if(NOT EXISTS "${CK_SOURCE_DIR}/include/ck/config.h.in" OR NOT EXISTS "${CK_SOURCE_DIR}/example/ck_tile/01_fmha/generate.py")
+        tornado_ck_skip("TORNADO_CK_SOURCE_DIR=${CK_SOURCE_DIR} is not a Composable Kernel checkout (no include/ck or example/ck_tile/01_fmha).")
+    endif()
+else()
+    set(CK_SOURCE_DIR "${CMAKE_BINARY_DIR}/_deps/composable_kernel-src")
+endif()
+if(NOT TORNADO_CK_SOURCE_DIR AND NOT EXISTS "${CK_SOURCE_DIR}/.tornado-${CK_COMMIT}")
+    find_package(Git)
+    if(NOT GIT_FOUND)
+        tornado_ck_skip("git is needed to fetch Composable Kernel ${CK_COMMIT}; or set TORNADO_CK_SOURCE_DIR to a checkout of it.")
+    endif()
     file(REMOVE_RECURSE "${CK_SOURCE_DIR}")
     file(MAKE_DIRECTORY "${CK_SOURCE_DIR}")
 
-    macro(ck_git)
-        execute_process(
-            COMMAND ${GIT_EXECUTABLE} ${ARGN}
-            WORKING_DIRECTORY "${CK_SOURCE_DIR}"
-            RESULT_VARIABLE _ck_git_rc
-        )
-        if(NOT _ck_git_rc EQUAL 0)
-            message(FATAL_ERROR "Composable Kernel sparse checkout failed: git ${ARGN}")
+    set(_ck_git_rc 0)
+    foreach(step "init -q" "remote add origin https://github.com/ROCm/composable_kernel.git" "sparse-checkout init --cone"
+                 "sparse-checkout set include example/ck_tile/01_fmha" "fetch --depth 1 origin ${CK_COMMIT}" "checkout -q FETCH_HEAD")
+        if(_ck_git_rc EQUAL 0)
+            separate_arguments(_ck_git_args UNIX_COMMAND "${step}")
+            execute_process(
+                COMMAND ${GIT_EXECUTABLE} ${_ck_git_args}
+                WORKING_DIRECTORY "${CK_SOURCE_DIR}"
+                RESULT_VARIABLE _ck_git_rc
+            )
+            set(_ck_git_step "${step}")
         endif()
-    endmacro()
-
-    ck_git(init -q)
-    ck_git(remote add origin https://github.com/ROCm/composable_kernel.git)
-    ck_git(sparse-checkout init --cone)
-    ck_git(sparse-checkout set include example/ck_tile/01_fmha)
-    ck_git(fetch --depth 1 origin ${CK_COMMIT})
-    ck_git(checkout -q FETCH_HEAD)
+    endforeach()
+    if(NOT _ck_git_rc EQUAL 0)
+        file(REMOVE_RECURSE "${CK_SOURCE_DIR}")
+        tornado_ck_skip("fetching Composable Kernel ${CK_COMMIT} failed (git ${_ck_git_step}); offline, set TORNADO_CK_SOURCE_DIR to a checkout of it.")
+    endif()
     file(TOUCH "${CK_SOURCE_DIR}/.tornado-${CK_COMMIT}")
 endif()
 set(CK_FMHA_DIR "${CK_SOURCE_DIR}/example/ck_tile/01_fmha")
