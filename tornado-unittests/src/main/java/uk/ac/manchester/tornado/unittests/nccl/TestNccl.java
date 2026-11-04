@@ -53,6 +53,7 @@ import uk.ac.manchester.tornado.nccl.NcclUniqueId;
 import uk.ac.manchester.tornado.nccl.provider.NcclLibraryProvider;
 import uk.ac.manchester.tornado.unittests.common.TornadoTestBase;
 import uk.ac.manchester.tornado.unittests.common.TornadoVMCUDANotSupported;
+import uk.ac.manchester.tornado.unittests.common.TornadoVMHIPNotSupported;
 import uk.ac.manchester.tornado.unittests.common.TornadoVMMultiDeviceNotSupported;
 
 /**
@@ -78,8 +79,14 @@ public class TestNccl extends TornadoTestBase {
     @BeforeEach
     public void ncclMustBeAvailable() {
         TornadoVMBackendType backendType = getTornadoRuntime().getDefaultDevice().getTornadoVMBackend();
+        if (backendType == TornadoVMBackendType.HIP) {
+            if (!NcclLibraryProvider.isAvailable()) {
+                throw new TornadoVMHIPNotSupported("RCCL is not available on this host");
+            }
+            return;
+        }
         if (backendType != TornadoVMBackendType.CUDA) {
-            String message = "NCCL library tasks require the CUDA backend (default device is " + backendType + ")";
+            String message = "NCCL library tasks require the CUDA or HIP backend (default device is " + backendType + ")";
             switch (backendType) {
                 case OPENCL, METAL -> assertNotBackend(backendType, message);
                 default -> throw new TornadoVMCUDANotSupported(message);

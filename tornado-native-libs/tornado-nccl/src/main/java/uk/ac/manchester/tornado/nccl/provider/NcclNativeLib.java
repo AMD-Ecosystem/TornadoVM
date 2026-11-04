@@ -29,15 +29,27 @@ import java.lang.foreign.StructLayout;
 import java.lang.foreign.SymbolLookup;
 import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
+import java.util.List;
 
+import uk.ac.manchester.tornado.api.TornadoRuntime;
+import uk.ac.manchester.tornado.api.enums.TornadoVMBackendType;
 import uk.ac.manchester.tornado.api.exceptions.TornadoRuntimeException;
+import uk.ac.manchester.tornado.api.runtime.TornadoRuntimeProvider;
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
+import uk.ac.manchester.tornado.runtime.ffm.ROCmLibraries;
 
 /**
  * Bindings to NVIDIA NCCL and the one CUDA runtime call the provider needs. Communicators, streams
  * and device pointers are opaque handles carried as {@code long}; device pointers are raw
  * {@code CUdeviceptr} values of TornadoVM-managed buffers, and every collective is enqueued on the
  * TornadoVM execution stream of its plan, so it is ordered with the kernels and transfers around it.
+ *
+ * <p>
+ * On AMD GPUs the same bindings reach RCCL, ROCm's implementation of the NCCL API and ABI, with the
+ * HIP runtime in place of the CUDA runtime (the four calls used here have the same signatures). The
+ * library is chosen once per process by the backend TornadoVM runs on: RCCL when the HIP backend is
+ * installed and the CUDA backend is not (or HIP is the default backend), NCCL otherwise.
+ * {@code -Dtornado.nccl.library=rccl|nccl} overrides the choice.
  */
 public final class NcclNativeLib {
 
@@ -60,13 +72,18 @@ public final class NcclNativeLib {
     /** {@code ncclUniqueId}: a struct holding {@code char internal[128]}, passed by value to {@code ncclCommInitRank}. */
     private static final StructLayout UNIQUE_ID = MemoryLayout.structLayout(MemoryLayout.sequenceLayout(UNIQUE_ID_BYTES, ValueLayout.JAVA_BYTE).withName("internal"));
 
-    private static final SymbolLookup LIBNCCL = FFMSupport.loadLibrary("libnccl.so.2", "libnccl.so");
+    /** Whether the bindings reach RCCL and the HIP runtime rather than NCCL and the CUDA runtime. */
+    private static final boolean RCCL = useRccl();
+
+    private static final SymbolLookup LIBNCCL = RCCL ? ROCmLibraries.load(List.of("librccl.so.1", "librccl.so"), List.of("rccl.dll", "librccl.dll"))
+            : FFMSupport.loadLibrary("libnccl.so.2", "libnccl.so");
 
     /**
      * The CUDA runtime is only used to ask which device the current context belongs to: NCCL
      * addresses devices by CUDA runtime ordinal, while TornadoVM addresses them by its own index.
      */
-    private static final SymbolLookup LIBCUDART = FFMSupport.loadLibrary("libcudart.so.13", "libcudart.so.12", "libcudart.so");
+    private static final SymbolLookup LIBCUDART = RCCL ? ROCmLibraries.load(List.of("libamdhip64.so.7", "libamdhip64.so.6", "libamdhip64.so"), List.of("amdhip64_7.dll", "amdhip64_6.dll"))
+            : FFMSupport.loadLibrary("libcudart.so.13", "libcudart.so.12", "libcudart.so");
 
     private static final MethodHandle NCCL_GET_VERSION;
     private static final MethodHandle NCCL_GET_ERROR_STRING;
@@ -141,16 +158,36 @@ public final class NcclNativeLib {
             NCCL_RECV = FFMSupport.downcall(LIBNCCL, FunctionDescriptor.of(C_INT, C_LONG, C_LONG, C_INT, C_INT, C_LONG, C_LONG), "ncclRecv");
             NCCL_GROUP_START = FFMSupport.downcall(LIBNCCL, FunctionDescriptor.of(C_INT), "ncclGroupStart");
             NCCL_GROUP_END = FFMSupport.downcall(LIBNCCL, FunctionDescriptor.of(C_INT), "ncclGroupEnd");
-            CUDA_GET_DEVICE = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_POINTER), "cudaGetDevice");
+            CUDA_GET_DEVICE = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_POINTER), RCCL ? "hipGetDevice" : "cudaGetDevice");
             // the side stream and the events of the collectives started with allReduceInPlaceStart
-            CUDA_STREAM_CREATE_WITH_FLAGS = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_POINTER, C_INT), "cudaStreamCreateWithFlags");
-            CUDA_EVENT_CREATE_WITH_FLAGS = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_POINTER, C_INT), "cudaEventCreateWithFlags");
-            CUDA_EVENT_RECORD = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_LONG, C_LONG), "cudaEventRecord");
-            CUDA_STREAM_WAIT_EVENT = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_LONG, C_LONG, C_INT), "cudaStreamWaitEvent");
+            CUDA_STREAM_CREATE_WITH_FLAGS = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_POINTER, C_INT), RCCL ? "hipStreamCreateWithFlags" : "cudaStreamCreateWithFlags");
+            CUDA_EVENT_CREATE_WITH_FLAGS = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_POINTER, C_INT), RCCL ? "hipEventCreateWithFlags" : "cudaEventCreateWithFlags");
+            CUDA_EVENT_RECORD = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_LONG, C_LONG), RCCL ? "hipEventRecord" : "cudaEventRecord");
+            CUDA_STREAM_WAIT_EVENT = FFMSupport.downcall(LIBCUDART, FunctionDescriptor.of(C_INT, C_LONG, C_LONG, C_INT), RCCL ? "hipStreamWaitEvent" : "cudaStreamWaitEvent");
         }
     }
 
     private NcclNativeLib() {
+    }
+
+    private static boolean useRccl() {
+        String library = System.getProperty("tornado.nccl.library", "");
+        if (!library.isBlank()) {
+            return library.trim().equalsIgnoreCase("rccl");
+        }
+        TornadoRuntime runtime = TornadoRuntimeProvider.getTornadoRuntime();
+        boolean hip = false;
+        boolean cuda = false;
+        for (int i = 0; i < runtime.getNumBackends(); i++) {
+            hip |= runtime.getBackendType(i) == TornadoVMBackendType.HIP;
+            cuda |= runtime.getBackendType(i) == TornadoVMBackendType.CUDA;
+        }
+        return hip && (!cuda || runtime.getBackendType(0) == TornadoVMBackendType.HIP);
+    }
+
+    /** Whether the collectives run through RCCL (AMD GPUs) rather than NCCL. */
+    public static boolean isRccl() {
+        return RCCL;
     }
 
     /** Whether NCCL and the CUDA runtime can both be reached on this host. */
@@ -160,6 +197,9 @@ public final class NcclNativeLib {
 
     /** Fails with a clear message when NCCL cannot be reached. */
     public static void load() {
+        if (!isAvailable() && RCCL) {
+            throw new TornadoRuntimeException("[ERROR] Unable to load RCCL. Install ROCm with RCCL and set ROCM_PATH (or HIP_PATH) to its root.");
+        }
         if (!isAvailable()) {
             throw new TornadoRuntimeException("[ERROR] Unable to load NCCL. Install NCCL (e.g. the nvidia-nccl-cu13 wheel or the libnccl2 package) and make sure libnccl.so.2 is on the library path.");
         }
