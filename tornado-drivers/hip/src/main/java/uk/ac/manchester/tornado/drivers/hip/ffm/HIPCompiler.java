@@ -181,6 +181,7 @@ public final class HIPCompiler {
             MemorySegment image = arena.allocate(Math.max(program.binary.length, 1), 8);
             MemorySegment.copy(program.binary, 0, image, FFMSupport.C_CHAR, 0, program.binary.length);
             MemorySegment moduleOut = FFMSupport.allocatePointer(arena);
+            // HIP ignores the JIT options (an error log buffer among them), so the error code is all there is
             int result = HIPDriverAPI.hipModuleLoadDataEx(moduleOut, image, 0, MemorySegment.NULL, MemorySegment.NULL);
             if (result == HIPDriverAPI.HIP_SUCCESS) {
                 program.module = moduleOut.get(FFMSupport.C_POINTER, 0).address();

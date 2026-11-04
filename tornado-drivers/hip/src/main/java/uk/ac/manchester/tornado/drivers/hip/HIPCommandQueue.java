@@ -141,7 +141,7 @@ public class HIPCommandQueue extends CommandQueue {
      * Whether per-operation device timing is wanted, i.e. the TornadoVM profiler is active. Pushed
      * from Java before each plan execution. When off, the START timestamp event is skipped entirely
      * (halving the events per operation) and the remaining events are created with
-     * {@code CU_EVENT_DISABLE_TIMING}, which is cheaper to record. Events without a start report an
+     * {@code hipEventDisableTiming}, which is cheaper to record. Events without a start report an
      * elapsed time of zero.
      */
     private static volatile boolean timingEnabled = true;
@@ -149,15 +149,9 @@ public class HIPCommandQueue extends CommandQueue {
     /** hipError_t for a call the backend rejects before it reaches the driver. */
     private static final int HIP_ERROR_INVALID_VALUE = 1;
 
-    /**
-     * Size of {@code hipGraphExecUpdateResult}: a 4-byte result enum padded to 8, then two node
-     * pointers. The driver fills it in and only the returned hipError_t is used, but it still has to
-     * be given somewhere valid to write.
-     */
-
-    /** {@code hipEvent_t flags}. */
-    private static final int CU_EVENT_DEFAULT = 0x0;
-    private static final int CU_EVENT_DISABLE_TIMING = 0x2;
+    /** {@code hipEventDefault} and {@code hipEventDisableTiming}. */
+    private static final int HIP_EVENT_DEFAULT = 0x0;
+    private static final int HIP_EVENT_DISABLE_TIMING = 0x2;
 
     /** Default block size when the caller supplies no local work size. */
     private static final int DEFAULT_BLOCK_SIZE = 256;
@@ -167,7 +161,7 @@ public class HIPCommandQueue extends CommandQueue {
     }
 
     private static int eventFlags() {
-        return timingEnabled ? CU_EVENT_DEFAULT : CU_EVENT_DISABLE_TIMING;
+        return timingEnabled ? HIP_EVENT_DEFAULT : HIP_EVENT_DISABLE_TIMING;
     }
 
     /**
@@ -274,7 +268,7 @@ public class HIPCommandQueue extends CommandQueue {
         if (!timingEnabled) {
             return 0;
         }
-        long start = createEvent(CU_EVENT_DEFAULT, "hipEventCreateWithFlags(start)");
+        long start = createEvent(HIP_EVENT_DEFAULT, "hipEventCreateWithFlags(start)");
         queue.markPending();
         int result = HIPDriverAPI.hipEventRecord(start, queue.stream());
         if (result != HIPDriverAPI.HIP_SUCCESS) {
@@ -907,14 +901,14 @@ public class HIPCommandQueue extends CommandQueue {
     }
 
     /**
-     * CU_STREAM_CAPTURE_MODE_THREAD_LOCAL: while this stream is capturing, potentially unsafe calls
+     * hipStreamCaptureModeThreadLocal: while this stream is capturing, potentially unsafe calls
      * (allocation, synchronous memset, graph instantiation, ...) are refused on the capturing thread
      * only. In global mode they were refused on every thread of the process, so two plans capturing
      * on two threads at the same time failed at random: one plan's {@code hipGraphInstantiate} or
      * buffer allocation hit {@code HIP_ERROR_STREAM_CAPTURE_UNSUPPORTED} because of the other's
      * capture.
      */
-    private static final int CU_STREAM_CAPTURE_MODE_THREAD_LOCAL = 1;
+    private static final int HIP_STREAM_CAPTURE_MODE_THREAD_LOCAL = 1;
 
     /** True while this queue's stream is recording operations into a HIP graph. */
     private boolean capturing = false;
@@ -941,7 +935,7 @@ public class HIPCommandQueue extends CommandQueue {
      * stream into a HIP graph.
      */
     public void beginGraphCapture() {
-        long result = hipStreamBeginCapture(commandQueuePtr, CU_STREAM_CAPTURE_MODE_THREAD_LOCAL);
+        long result = hipStreamBeginCapture(commandQueuePtr, HIP_STREAM_CAPTURE_MODE_THREAD_LOCAL);
         if (result != 0) {
             throw new TornadoBailoutRuntimeException("hipStreamBeginCapture failed. hipError_t=" + result);
         }

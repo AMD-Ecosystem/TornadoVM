@@ -74,9 +74,9 @@ public class HIPContext implements HIPContextInterface {
     }
 
     /** {@code hipStream_t flags}: the stream does not synchronise with the NULL stream. */
-    private static final int CU_STREAM_NON_BLOCKING = 0x1;
-    /** {@code CU_MEMHOSTREGISTER_PORTABLE}: keep the pin valid across every HIP context. */
-    private static final int CU_MEMHOSTREGISTER_PORTABLE = 0x01;
+    private static final int HIP_STREAM_NON_BLOCKING = 0x1;
+    /** {@code hipHostRegisterPortable}: keep the pin valid across every HIP context. */
+    private static final int HIP_HOST_REGISTER_PORTABLE = 0x01;
     private static final int HIP_ERROR_INVALID_VALUE = 1;
     private static final int HIP_ERROR_INVALID_CONTEXT = 201;
 
@@ -181,7 +181,7 @@ public class HIPContext implements HIPContextInterface {
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment stream = FFMSupport.allocatePointer(arena);
-            result = HIPDriverAPI.hipStreamCreateWithFlags(stream, CU_STREAM_NON_BLOCKING);
+            result = HIPDriverAPI.hipStreamCreateWithFlags(stream, HIP_STREAM_NON_BLOCKING);
             if (result != HIPDriverAPI.HIP_SUCCESS) {
                 throw new HIPException(HIPDriverAPI.describe("hipStreamCreateWithFlags", result));
             }
@@ -248,7 +248,7 @@ public class HIPContext implements HIPContextInterface {
      *
      * <p>{@code hipMemsetD8} on device memory is asynchronous with respect to the host, and it runs
      * on the legacy default stream, which TornadoVM's streams -- created
-     * {@code CU_STREAM_NON_BLOCKING} -- are not ordered against. Without waiting for it, the
+     * {@code hipStreamNonBlocking} -- are not ordered against. Without waiting for it, the
      * zeroing can land after the plan's own stream has written the buffer (a library call or a
      * kernel issued right after allocation), wiping what it wrote. So the legacy stream is
      * synchronised here: the zeroing is complete before the buffer is handed out. This is on the
@@ -325,7 +325,7 @@ public class HIPContext implements HIPContextInterface {
             return -1;
         }
         HIPDriverAPI.hipCtxSetCurrent(context.context());
-        return HIPDriverAPI.hipHostRegister(hostPointer, numBytes, CU_MEMHOSTREGISTER_PORTABLE);
+        return HIPDriverAPI.hipHostRegister(hostPointer, numBytes, HIP_HOST_REGISTER_PORTABLE);
     }
 
     /**

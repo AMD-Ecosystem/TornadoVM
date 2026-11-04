@@ -107,10 +107,6 @@ public final class HIPDriverAPI {
     /** hipFunction_attribute: the largest block a function can launch with. */
     public static final int HIP_FUNC_ATTRIBUTE_MAX_THREADS_PER_BLOCK = 0;
 
-    /** hipJitOption values used to capture the loader's diagnostics on a module load. */
-    public static final int HIP_JIT_ERROR_LOG_BUFFER = 5;
-    public static final int HIP_JIT_ERROR_LOG_BUFFER_SIZE_BYTES = 6;
-
     /** hipStreamCaptureStatus / hipStreamCaptureMode values used by the graph path. */
     public static final int HIP_STREAM_CAPTURE_STATUS_NONE = 0;
     public static final int HIP_STREAM_CAPTURE_STATUS_ACTIVE = 1;
