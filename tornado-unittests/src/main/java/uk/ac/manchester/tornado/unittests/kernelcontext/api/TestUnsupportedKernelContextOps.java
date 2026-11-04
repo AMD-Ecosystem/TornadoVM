@@ -157,6 +157,7 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
     @Test
     public void testSimdSumRejectedOnOpenCL() {
         assertNotBackend(TornadoVMBackendType.CUDA);
+        assertNotBackend(TornadoVMBackendType.HIP);
         assertNotBackend(TornadoVMBackendType.METAL);
         FloatArray in = new FloatArray(SIZE);
         FloatArray out = new FloatArray(SIZE);
@@ -170,6 +171,7 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
     @Test
     public void testSimdShuffleDownRejectedOnOpenCL() {
         assertNotBackend(TornadoVMBackendType.CUDA);
+        assertNotBackend(TornadoVMBackendType.HIP);
         assertNotBackend(TornadoVMBackendType.METAL);
         FloatArray in = new FloatArray(SIZE);
         FloatArray out = new FloatArray(SIZE);
@@ -183,6 +185,7 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
     @Test
     public void testSimdBroadcastFirstRejectedOnOpenCL() {
         assertNotBackend(TornadoVMBackendType.CUDA);
+        assertNotBackend(TornadoVMBackendType.HIP);
         assertNotBackend(TornadoVMBackendType.METAL);
         FloatArray in = new FloatArray(SIZE);
         FloatArray out = new FloatArray(SIZE);

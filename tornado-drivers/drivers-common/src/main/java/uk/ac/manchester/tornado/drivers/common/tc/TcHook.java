@@ -32,6 +32,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 
 import uk.ac.manchester.tornado.api.exceptions.TornadoBailoutRuntimeException;
 import uk.ac.manchester.tornado.api.exceptions.TornadoDeviceFP64NotSupported;
+import uk.ac.manchester.tornado.api.exceptions.TornadoDeviceDynamicParallelismNotSupported;
 import uk.ac.manchester.tornado.api.exceptions.TornadoDeviceMMANotSupported;
 import uk.ac.manchester.tornado.runtime.domain.DomainTree;
 import uk.ac.manchester.tornado.runtime.domain.IntDomain;
@@ -604,6 +605,10 @@ public final class TcHook {
         if (d.code().equals("TC-E4017") || d.code().equals("TC-E4018")) {
             // Tensor cores the device (or its NVRTC) lacks: what KernelContext.mma* document.
             return new TornadoDeviceMMANotSupported(text);
+        }
+        if (d.code().equals("TC-E4016")) {
+            // KernelContext.launch on a device whose kernels cannot launch kernels (HIP, or CUDA below sm_35).
+            return new TornadoDeviceDynamicParallelismNotSupported(text);
         }
         return switch (category) {
             // TornadoInternalError formats its message: pass the text as an argument, not as the format.
