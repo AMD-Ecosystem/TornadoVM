@@ -33,6 +33,7 @@ import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.atomic.AtomicLong;
 
+import uk.ac.manchester.tornado.api.exceptions.TornadoRuntimeException;
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
 import uk.ac.manchester.tornado.runtime.ffm.ROCmLibraries;
 
@@ -148,6 +149,18 @@ final class HipBlasLtNativeLib {
             throw e;
         }
         throw new IllegalStateException(t);
+    }
+
+    /** Whether hipBLASLt is installed: it ships separately from hipBLAS. */
+    static boolean isAvailable() {
+        return LT_CREATE != null && MATMUL != null;
+    }
+
+    /** Fails with a clear message when hipBLASLt cannot be reached. */
+    static void load() {
+        if (!isAvailable()) {
+            throw new TornadoRuntimeException("[ERROR] Unable to load hipBLASLt. Install ROCm with hipBLASLt and set ROCM_PATH (or HIP_PATH) to its root.");
+        }
     }
 
     static long ltCreate() {

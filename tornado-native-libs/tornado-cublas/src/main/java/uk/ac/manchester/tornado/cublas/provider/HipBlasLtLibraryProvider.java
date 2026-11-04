@@ -88,13 +88,19 @@ public final class HipBlasLtLibraryProvider implements TornadoLibraryProvider {
 
     @Override
     public boolean canHandle(TornadoXPUDevice device) {
-        // CUDA devices only: the Metal backend also implements TornadoNativeStreamSupport
+        // HIP devices only: the Metal backend also implements TornadoNativeStreamSupport
         return device.getTornadoVMBackend() == TornadoVMBackendType.HIP && device instanceof TornadoNativeStreamSupport;
+    }
+
+    /** Whether hipBLASLt, and hipBLAS (whose bindings allocate the workspace), can be reached on this host. */
+    public static boolean isAvailable() {
+        return HipBlasLtNativeLib.isAvailable() && HipBlasLibraryProvider.isAvailable();
     }
 
     @Override
     public LibraryContext createContext(TornadoXPUDevice device, long executionPlanId) {
         HipBlasNativeLib.load();
+        HipBlasLtNativeLib.load();
         long handle = HipBlasLtNativeLib.ltCreate();
         if (handle == 0) {
             throw new TornadoRuntimeException("[ERROR] hipblasLtCreate failed");

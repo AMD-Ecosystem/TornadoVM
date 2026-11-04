@@ -40,7 +40,7 @@ import uk.ac.manchester.tornado.cublas.enums.CuBlasOperation;
 import uk.ac.manchester.tornado.unittests.common.LibraryStreamPerThread;
 import uk.ac.manchester.tornado.unittests.common.TornadoTestBase;
 import uk.ac.manchester.tornado.cublas.provider.CuBlasLibraryProvider;
-import uk.ac.manchester.tornado.cublas.provider.HipBlasLibraryProvider;
+import uk.ac.manchester.tornado.cublas.provider.HipBlasLtLibraryProvider;
 import uk.ac.manchester.tornado.unittests.common.TornadoVMCUDANotSupported;
 import uk.ac.manchester.tornado.unittests.common.TornadoVMHIPNotSupported;
 
@@ -65,8 +65,8 @@ public class TestCuBlasLt extends TornadoTestBase {
     public void cuBlasLtMustBeAvailable() {
         TornadoVMBackendType backendType = getTornadoRuntime().getDefaultDevice().getTornadoVMBackend();
         if (backendType == TornadoVMBackendType.HIP) {
-            if (!HipBlasLibraryProvider.isAvailable()) {
-                throw new TornadoVMHIPNotSupported("hipBLAS is not available on this host");
+            if (!HipBlasLtLibraryProvider.isAvailable()) {
+                throw new TornadoVMHIPNotSupported("hipBLASLt is not available on this host");
             }
             return;
         }
