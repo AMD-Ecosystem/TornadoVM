@@ -41,6 +41,7 @@ final class CkAttentionNativeLib {
     static final int SUCCESS = 0;
     static final int NO_KERNEL = 1;
     static final int INVALID_ARGUMENT = 2;
+    static final int HIP_FAILURE = 3;
 
     private static final SymbolLookup LIBTORNADO_CK = FFMSupport.loadBundledLibrary("libtornado-ck.so", "tornado-ck.dll");
 

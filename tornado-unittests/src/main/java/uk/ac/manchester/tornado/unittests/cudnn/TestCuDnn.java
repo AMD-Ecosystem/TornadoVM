@@ -693,6 +693,35 @@ public class TestCuDnn extends TornadoTestBase {
     }
 
     /**
+     * An empty sequence on a HIP device is refused with an error. The attention kernel launcher
+     * throws a C++ exception for it, which used to cross the C entry point and end the process.
+     */
+    @Test
+    public void testSdpaForwardRejectsEmptySequenceOnHip() {
+        if (getTornadoRuntime().getDefaultDevice().getTornadoVMBackend() != TornadoVMBackendType.HIP) {
+            throw new TornadoVMHIPNotSupported("checks the HIP attention kernels' argument handling");
+        }
+        final int b = 1;
+        final int h = 2;
+        final int d = 64;
+        HalfFloatArray q = randomHalfArray(h * d);
+        HalfFloatArray k = randomHalfArray(h * d);
+        HalfFloatArray v = randomHalfArray(h * d);
+        HalfFloatArray o = new HalfFloatArray(h * d);
+
+        TaskGraph taskGraph = new TaskGraph("g") //
+                .transferToDevice(DataTransferMode.EVERY_EXECUTION, q, k, v) //
+                .libraryTask("sdpa", CuDnn::sdpaForward, q, k, v, o, b, h, 0, 1, d, 0.125f, false) //
+                .transferToHost(DataTransferMode.EVERY_EXECUTION, o);
+
+        assertThrows(RuntimeException.class, () -> {
+            try (TornadoExecutionPlan plan = new TornadoExecutionPlan(taskGraph.snapshot())) {
+                plan.execute();
+            }
+        });
+    }
+
+    /**
      * A head dimension that is not a multiple of 8 is refused with an error, as cuDNN refuses it,
      * instead of producing a wrong result.
      */

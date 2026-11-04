@@ -35,11 +35,12 @@ size_t dlPaddedBytes(int m, int n, int k) {
 
 /** c = product + beta c over the m x n block of the padded product (row pitch np); beta == 0 does not read c. */
 __global__ void storeProduct(float *c, const float *product, int m, int n, int np, float beta) {
-    int j = blockIdx.x * blockDim.x + threadIdx.x;
-    int i = blockIdx.y;
-    if (j < n && i < m) {
-        float value = product[(size_t) i * np + j];
-        c[(size_t) i * n + j] = beta == 0.0f ? value : value + beta * c[(size_t) i * n + j];
+    size_t index = (size_t) blockIdx.x * blockDim.x + threadIdx.x;
+    if (index < (size_t) m * n) {
+        size_t i = index / n;
+        size_t j = index % n;
+        float value = product[i * np + j];
+        c[index] = beta == 0.0f ? value : value + beta * c[index];
     }
 }
 
@@ -83,8 +84,13 @@ int dlFloatGemm(hipStream_t stream, int m, int n, int k, float alpha, const void
     if (status != SUCCESS) {
         return status;
     }
+    // one thread per element over a 1-D grid: a grid row per matrix row would cap m at 65535
     constexpr int threads = 256;
-    storeProduct<<<dim3((n + threads - 1) / threads, m), threads, 0, stream>>>(static_cast<float *>(c), product, m, n, np, beta);
+    size_t blocks = ((size_t) m * n + threads - 1) / threads;
+    if (blocks > INT32_MAX) {
+        return INVALID_ARGUMENT;
+    }
+    storeProduct<<<dim3((unsigned) blocks), threads, 0, stream>>>(static_cast<float *>(c), product, m, n, np, beta);
     return hipPeekAtLastError() == hipSuccess ? SUCCESS : HIP_FAILURE;
 }
 

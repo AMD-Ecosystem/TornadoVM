@@ -23,15 +23,13 @@
 
 #include <hip/hip_runtime.h>
 
-/*
- * Fused FP16 attention forward with CK's tile FMHA kernels: O = softmax(Q K^T * scale [+ causal
- * mask]) V. strides: 16 element strides, (batch, head, sequence, dim) of Q, K, V and then O; the
- * dim strides must be 1. Returns 0 on success, 1 when no kernel covers the shape on this GPU, 2
- * for an invalid argument, which includes a head dimension d that is not a multiple of 8 or is
- * above 256: cuDNN refuses those too, and the kernels compute them wrong.
- */
-extern "C" int tornado_ck_sdpa_forward(hipStream_t stream, const void* q, const void* k, const void* v, void* o, int b, int h, int sQ,
-                                       int sKv, int d, float scale, int causal, const long long* strides) {
+namespace {
+
+int sdpaForward(hipStream_t stream, const void* q, const void* k, const void* v, void* o, int b, int h, int sQ, int sKv, int d, float scale, int causal,
+                const long long* strides) {
+    if (b <= 0 || h <= 0 || sQ <= 0 || sKv <= 0 || d <= 0) {
+        return 2;
+    }
     for (int i = 0; i < 16; i++) {
         if (strides[i] < 0 || strides[i] > INT32_MAX) {
             return 2;
@@ -96,4 +94,23 @@ extern "C" int tornado_ck_sdpa_forward(hipStream_t stream, const void* q, const 
 
     ck_tile::stream_config config{stream, false, 0};
     return fmha_fwd(traits, args, config) < 0 ? 1 : 0;
+}
+
+} // namespace
+
+/*
+ * Fused FP16 attention forward with CK's tile FMHA kernels: O = softmax(Q K^T * scale [+ causal
+ * mask]) V. strides: 16 element strides, (batch, head, sequence, dim) of Q, K, V and then O; the
+ * dim strides must be 1. Returns 0 on success, 1 when no kernel covers the shape on this GPU, 2
+ * for an invalid argument, which includes a head dimension d that is not a multiple of 8 or is
+ * above 256: cuDNN refuses those too, and the kernels compute them wrong. Returns 3 when the
+ * launch fails (CK reports that with an exception, which must not cross the C boundary).
+ */
+extern "C" int tornado_ck_sdpa_forward(hipStream_t stream, const void* q, const void* k, const void* v, void* o, int b, int h, int sQ,
+                                       int sKv, int d, float scale, int causal, const long long* strides) {
+    try {
+        return sdpaForward(stream, q, k, v, o, b, h, sQ, sKv, d, scale, causal, strides);
+    } catch (...) {
+        return 3;
+    }
 }
