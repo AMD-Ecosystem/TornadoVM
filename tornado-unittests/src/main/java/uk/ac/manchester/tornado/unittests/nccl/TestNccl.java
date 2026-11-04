@@ -80,7 +80,7 @@ public class TestNccl extends TornadoTestBase {
     public void ncclMustBeAvailable() {
         TornadoVMBackendType backendType = getTornadoRuntime().getDefaultDevice().getTornadoVMBackend();
         if (backendType == TornadoVMBackendType.HIP) {
-            if (!NcclLibraryProvider.isAvailable()) {
+            if (!NcclLibraryProvider.isAvailable(TornadoVMBackendType.HIP)) {
                 throw new TornadoVMHIPNotSupported("RCCL is not available on this host");
             }
             return;

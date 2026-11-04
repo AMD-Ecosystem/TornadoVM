@@ -86,8 +86,9 @@ SITE=$(echo /tmp/hipvsenv/lib/python3.*/site-packages)
 export LD_LIBRARY_PATH=$SITE/libcuvs/lib64:$SITE/libraft/lib64:$SITE/librmm/lib64:$SITE/rapids_logger/lib64:$ROCM_PATH/lib/llvm/lib:$LD_LIBRARY_PATH
 ```
 
-The module uses hipVS when TornadoVM runs on the HIP backend (installed without the CUDA one, or as the default
-backend); `-Dtornado.cuvs.library=hipvs|cuvs` overrides that choice. hipVS takes device tensors as CUDA ones
+cuVS and hipVS have the same library name, so a process loads whichever `libcuvs_c.so` the library path finds;
+the module treats it as hipVS when it runs on the HIP runtime (`-Dtornado.cuvs.library=hipvs|cuvs` overrides
+that), and cuVS tasks then run on HIP devices. hipVS takes device tensors as CUDA ones
 (`kDLCUDA`), and builds the graph of a host dataset into device memory only, so `allNeighborsOnHost` stages its
 outputs through device memory there.
 

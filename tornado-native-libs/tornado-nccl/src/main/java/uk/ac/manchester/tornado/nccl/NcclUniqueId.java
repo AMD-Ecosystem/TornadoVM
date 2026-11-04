@@ -53,9 +53,12 @@ public final class NcclUniqueId {
         this.bytes = bytes;
     }
 
-    /** A new unique id ({@code ncclGetUniqueId}); create it in one process only. */
+    /**
+     * A new unique id ({@code ncclGetUniqueId}) from the library of the default device (RCCL for a HIP
+     * device); create it in one process only.
+     */
     public static NcclUniqueId create() {
-        return new NcclUniqueId(NcclNativeLib.getUniqueId());
+        return new NcclUniqueId(NcclNativeLib.forDefaultDevice().getUniqueId());
     }
 
     /** The id from the bytes another process obtained with {@link #toBytes()}. */

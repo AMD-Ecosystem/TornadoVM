@@ -89,9 +89,10 @@ make BACKEND=hip
 
 The build reports `-- TornadoVM hipDF: cudf <version> from ...` when it found it. At run time,
 put hipDF's library directories on `LD_LIBRARY_PATH` as above (`libcudf/lib64`, `librmm/lib64`,
-`rapids_logger/lib64`). The module binds `libtornado-hipdf.so` when TornadoVM runs on the HIP
-backend (installed without the CUDA one, or as the default backend), and
-`-Dtornado.cudf.library=hipdf|cudf` overrides that choice; cuDF tasks then run on HIP devices.
+`rapids_logger/lib64`). Both shims load a `libcudf.so`, so a process uses one of them: the module
+binds `libtornado-cudf.so` when it loads (the SDK has it and RAPIDS libcudf resolves), else
+`libtornado-hipdf.so`, and `-Dtornado.cudf.library=hipdf|cudf` overrides that choice. cuDF tasks
+then run on the devices of the shim's backend, HIP devices for the hipDF build.
 
 hipDF 3.0 cannot write Zstandard-compressed Parquet: `writeParquetColumns` with ZSTD reports the
 task as unsupported there, with hipDF's reason. Snappy and uncompressed writes work.

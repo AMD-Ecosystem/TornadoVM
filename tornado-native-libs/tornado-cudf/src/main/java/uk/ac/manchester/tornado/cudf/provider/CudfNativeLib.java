@@ -25,11 +25,8 @@ import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.SymbolLookup;
 import java.lang.invoke.MethodHandle;
 
-import uk.ac.manchester.tornado.api.TornadoRuntime;
-import uk.ac.manchester.tornado.api.enums.TornadoVMBackendType;
 import uk.ac.manchester.tornado.api.exceptions.TornadoLibraryTaskNotSupported;
 import uk.ac.manchester.tornado.api.exceptions.TornadoRuntimeException;
-import uk.ac.manchester.tornado.api.runtime.TornadoRuntimeProvider;
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
 
 /**
@@ -46,12 +43,6 @@ import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
 public final class CudfNativeLib {
 
     /**
-     * Whether the shim is the hipDF build, for HIP devices: {@code -Dtornado.cudf.library=hipdf|cudf},
-     * else hipDF when the HIP backend is installed without the CUDA one or is the default backend.
-     */
-    private static final boolean HIPDF = useHipdf();
-
-    /**
      * The shim, not cuDF itself.
      *
      * <p>
@@ -66,8 +57,23 @@ public final class CudfNativeLib {
      * library the SDK ships in its own {@code lib/} rather than one the system provides, so it is
      * on {@code java.library.path} and not on the loader's path.
      */
-    private static final SymbolLookup LIBTORNADO_CUDF = HIPDF ? FFMSupport.loadBundledLibrary("libtornado-hipdf.so")
-            : FFMSupport.loadBundledLibrary("libtornado-cudf.so", "tornado-cudf.dll", "libtornado-cudf.dylib");
+    private static final SymbolLookup LIBTORNADO_CUDF;
+
+    /**
+     * Whether the shim is the hipDF build, whose tasks run on HIP devices. Both builds load a
+     * {@code libcudf.so}, so a process holds one of them: {@code -Dtornado.cudf.library=hipdf|cudf}
+     * picks it, otherwise it is the RAPIDS build when that loads (the SDK has it, and libcudf and the
+     * CUDA runtime resolve), else the hipDF build. The provider handles devices of its backend only.
+     */
+    private static final boolean HIPDF;
+
+    static {
+        String library = System.getProperty("tornado.cudf.library", "").trim();
+        SymbolLookup rapids = library.equalsIgnoreCase("hipdf") ? null : FFMSupport.loadBundledLibrary("libtornado-cudf.so", "tornado-cudf.dll", "libtornado-cudf.dylib");
+        SymbolLookup hipdf = rapids != null || library.equalsIgnoreCase("cudf") ? null : FFMSupport.loadBundledLibrary("libtornado-hipdf.so");
+        HIPDF = hipdf != null || library.equalsIgnoreCase("hipdf");
+        LIBTORNADO_CUDF = HIPDF ? hipdf : rapids;
+    }
 
     private static final MethodHandle SORTED_ORDER;
     private static final MethodHandle GROUP_SUM;
@@ -216,21 +222,6 @@ public final class CudfNativeLib {
     }
 
     private CudfNativeLib() {
-    }
-
-    private static boolean useHipdf() {
-        String library = System.getProperty("tornado.cudf.library", "");
-        if (!library.isBlank()) {
-            return library.trim().equalsIgnoreCase("hipdf");
-        }
-        TornadoRuntime runtime = TornadoRuntimeProvider.getTornadoRuntime();
-        boolean hip = false;
-        boolean cuda = false;
-        for (int i = 0; i < runtime.getNumBackends(); i++) {
-            hip |= runtime.getBackendType(i) == TornadoVMBackendType.HIP;
-            cuda |= runtime.getBackendType(i) == TornadoVMBackendType.CUDA;
-        }
-        return hip && (!cuda || runtime.getBackendType(0) == TornadoVMBackendType.HIP);
     }
 
     /** Whether the shim is the hipDF build, whose tasks run on HIP devices. */

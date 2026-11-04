@@ -33,10 +33,7 @@ import java.lang.foreign.ValueLayout;
 import java.lang.invoke.MethodHandle;
 import java.util.List;
 
-import uk.ac.manchester.tornado.api.TornadoRuntime;
-import uk.ac.manchester.tornado.api.enums.TornadoVMBackendType;
 import uk.ac.manchester.tornado.api.exceptions.TornadoRuntimeException;
-import uk.ac.manchester.tornado.api.runtime.TornadoRuntimeProvider;
 import uk.ac.manchester.tornado.cuvs.CuVSAllNeighborsOptions;
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
 import uk.ac.manchester.tornado.runtime.ffm.ROCmLibraries;
@@ -55,13 +52,14 @@ final class CuVSNativeLib {
     /** {@code CUVS_SUCCESS} ({@code cuvsError_t} is {@code { CUVS_ERROR = 0, CUVS_SUCCESS = 1 }}). */
     private static final int CUVS_SUCCESS = 1;
 
+    private static final SymbolLookup LIBCUVS = FFMSupport.loadLibrary("libcuvs_c.so", "libcuvs_c.so.26", "cuvs_c.dll");
+
     /**
-     * Whether the library is hipVS, for HIP devices: {@code -Dtornado.cuvs.library=hipvs|cuvs}, else hipVS when the
-     * HIP backend is installed without the CUDA one or is the default backend.
+     * Whether the library is hipVS, whose tasks run on HIP devices: {@code -Dtornado.cuvs.library=hipvs|cuvs}, else
+     * whether the libcuvs_c that loaded runs on the HIP runtime. cuVS and hipVS have the same library name, so a
+     * process holds one of them, and the provider handles devices of its backend only.
      */
     private static final boolean HIPVS = useHipvs();
-
-    private static final SymbolLookup LIBCUVS = FFMSupport.loadLibrary("libcuvs_c.so", "libcuvs_c.so.26", "cuvs_c.dll");
 
     // DLPack (dlpack.h): device types, data type codes and the DLManagedTensor layout
     static final int DL_CPU = 1;
@@ -205,14 +203,8 @@ final class CuVSNativeLib {
         if (!library.isBlank()) {
             return library.trim().equalsIgnoreCase("hipvs");
         }
-        TornadoRuntime runtime = TornadoRuntimeProvider.getTornadoRuntime();
-        boolean hip = false;
-        boolean cuda = false;
-        for (int i = 0; i < runtime.getNumBackends(); i++) {
-            hip |= runtime.getBackendType(i) == TornadoVMBackendType.HIP;
-            cuda |= runtime.getBackendType(i) == TornadoVMBackendType.CUDA;
-        }
-        return hip && (!cuda || runtime.getBackendType(0) == TornadoVMBackendType.HIP);
+        // the lookup also searches the libraries libcuvs_c depends on
+        return LIBCUVS != null && FFMSupport.findSymbol(LIBCUVS, "hipGetDevice") != null;
     }
 
     /** Whether the library is hipVS, whose tasks run on HIP devices. */
