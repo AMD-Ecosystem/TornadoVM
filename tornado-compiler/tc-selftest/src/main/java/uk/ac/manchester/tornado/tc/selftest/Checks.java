@@ -78,8 +78,8 @@ final class Checks {
                 new Check("device", "warp-sum", "32-lane warp reduction (KernelContext.simdSum)", TargetCaps::warps32, "32-lane warps", Checks::warpSum),
                 new Check("device", "device-launch", "a kernel launching a kernel (KernelContext.launch)", TargetCaps::deviceLaunch, "device-side launches (CUDA dynamic parallelism)",
                         Checks::deviceLaunch),
-                new Check("tensor-cores", "mma-f16", "F16 tensor-core GEMM (mma.sync m16n8k16)", TargetCaps::mma, "tensor cores (CUDA sm_80+)", Checks::mmaF16),
-                new Check("tensor-cores", "mma-fp8", "FP8 e4m3 tensor-core GEMM (mma.sync m16n8k32)", TargetCaps::fp8Mma, "FP8 tensor cores (CUDA sm_89+, NVRTC 12.4+)",
+                new Check("tensor-cores", "mma-f16", "F16 tensor-core GEMM (mma.sync m16n8k16)", TargetCaps::mma, "tensor cores (CUDA sm_80+, or AMD MFMA/WMMA)", Checks::mmaF16),
+                new Check("tensor-cores", "mma-fp8", "FP8 e4m3 tensor-core GEMM (mma.sync m16n8k32)", TargetCaps::fp8Mma, "FP8 tensor cores (CUDA sm_89+ with NVRTC 12.4+, or AMD MFMA/WMMA)",
                         Checks::mmaFp8)));
         return checks;
     }

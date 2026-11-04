@@ -99,9 +99,45 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
     /** NVRTC 12.4, the first to emit PTX ISA 8.4 (FP8 {@code mma.sync}). */
     public static final int NVRTC_PTX_ISA_8_4 = 12004;
 
-    /** Warp-level tensor-core MMA ({@code mma.sync} m16n8k16/k32) and {@code cp.async}: CUDA sm_80 or newer. */
+    /**
+     * Warp-level tensor-core MMA ({@code mma.sync} m16n8k16/k32) and {@code cp.async}: CUDA sm_80 or newer,
+     * or an AMD GPU with matrix cores (MFMA on CDNA, WMMA on RDNA3 and RDNA4).
+     */
     public boolean mma() {
-        return dialect == Dialect.CUDA && computeCapability >= 80;
+        return switch (dialect) {
+            case CUDA -> computeCapability >= 80;
+            case HIP -> matrixCores() != MatrixCores.NONE;
+            default -> false;
+        };
+    }
+
+    /** The matrix instructions a HIP kernel lowers KernelContext's MMA operations to. */
+    public enum MatrixCores {
+        /** None this lowering targets. */
+        NONE,
+        /** CDNA (gfx908, gfx90a, gfx942, gfx950): MFMA. */
+        MFMA,
+        /** RDNA3 (gfx11): WMMA. */
+        WMMA_GFX11,
+        /** RDNA4 (gfx1200, gfx1201): WMMA. */
+        WMMA_GFX12
+    }
+
+    /** The matrix instructions of {@link #arch}; {@link MatrixCores#NONE} for a GPU without them, and for any other dialect. */
+    public MatrixCores matrixCores() {
+        if (dialect != Dialect.HIP) {
+            return MatrixCores.NONE;
+        }
+        if (arch.equals("gfx908") || arch.equals("gfx90a") || arch.startsWith("gfx94") || arch.startsWith("gfx95")) {
+            return MatrixCores.MFMA;
+        }
+        if (arch.startsWith("gfx11")) {
+            return MatrixCores.WMMA_GFX11;
+        }
+        if (arch.equals("gfx1200") || arch.equals("gfx1201")) {
+            return MatrixCores.WMMA_GFX12;
+        }
+        return MatrixCores.NONE;
     }
 
     /**
@@ -109,6 +145,10 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
      * NVRTC version (0, headless use) is not held against the device.
      */
     public boolean fp8Mma() {
+        if (dialect == Dialect.HIP) {
+            // FP8 inputs are widened exactly to halves and multiplied by the half-precision instructions.
+            return mma();
+        }
         return mma() && computeCapability >= 89 && (nvrtcVersion <= 0 || nvrtcVersion >= NVRTC_PTX_ISA_8_4);
     }
 }

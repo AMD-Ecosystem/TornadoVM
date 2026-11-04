@@ -83,7 +83,7 @@ public final class Legality {
         // HIP copies asynchronously-staged tiles synchronously, which any AMD GPU can do; MMA needs matrix cores.
         if (target.dialect() == TargetCaps.Dialect.HIP && !target.mma()) {
             insts(function).filter(i -> intrinsic(i, "tornado.mma.")).findFirst()
-                    .ifPresent(i -> problems.add(at(function, i, "TC-E4017", "tensor-core MMA needs AMD matrix cores (MFMA or WMMA); the device is " + hipArch(target))));
+                    .ifPresent(i -> problems.add(at(function, i, "TC-E4017", hipNoMatrixCores(target))));
         }
         insts(function).filter(i -> intrinsic(i, "tornado.vector.lane_at") || intrinsic(i, "tornado.vector.insert_at")).findFirst()
                 .ifPresent(i -> problems.add(at(function, i, "TC-E1010", "vector lanes can only be accessed at a constant index (a loop over lanes must have a constant trip count to unroll)")));
@@ -97,8 +97,12 @@ public final class Legality {
         return problems;
     }
 
-    private static String hipArch(TargetCaps target) {
-        return target.arch().isEmpty() ? "an AMD GPU without them" : target.arch();
+    private static String hipNoMatrixCores(TargetCaps target) {
+        if (target.arch().startsWith("gfx12")) {
+            // gfx1250 has matrix cores, with WMMA shapes of its own that this lowering does not target yet.
+            return "tensor-core MMA is lowered to the gfx11 and gfx1200/gfx1201 WMMA and the CDNA MFMA instructions; " + target.arch() + " is not supported yet";
+        }
+        return "tensor-core MMA needs AMD matrix cores (MFMA on CDNA, WMMA on RDNA3 or RDNA4); the device is " + (target.arch().isEmpty() ? "an AMD GPU without them" : target.arch());
     }
 
     private static Stream<Inst> insts(Function function) {
