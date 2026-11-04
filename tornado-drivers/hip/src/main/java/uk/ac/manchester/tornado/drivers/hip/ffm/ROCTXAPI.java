@@ -62,7 +62,7 @@ public final class ROCTXAPI {
         } else {
             ROCTX_RANGE_PUSH_A = downcall(LIBROCTX, FunctionDescriptor.of(C_INT, C_POINTER), "roctxRangePushA");
             ROCTX_RANGE_POP = downcall(LIBROCTX, FunctionDescriptor.of(C_INT), "roctxRangePop");
-            ROCTX_NAME_HIP_STREAM = downcall(LIBROCTX, FunctionDescriptor.of(C_INT, C_LONG, C_POINTER), "roctxNameHipStream");
+            ROCTX_NAME_HIP_STREAM = downcall(LIBROCTX, FunctionDescriptor.of(C_INT, C_POINTER, C_LONG), "roctxNameHipStream");
         }
     }
 
@@ -130,7 +130,7 @@ public final class ROCTXAPI {
         }
         try (Arena arena = Arena.ofConfined()) {
             MemorySegment text = FFMSupport.allocateCString(arena, name);
-            int ignored = (int) ROCTX_NAME_HIP_STREAM.invokeExact(stream, text);
+            int ignored = (int) ROCTX_NAME_HIP_STREAM.invokeExact(text, stream);
         } catch (Throwable t) {
             throw new IllegalStateException(t);
         }
