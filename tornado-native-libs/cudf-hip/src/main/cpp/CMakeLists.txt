@@ -1,5 +1,9 @@
 cmake_minimum_required (VERSION 3.21)
 
+# The project comes first, so that a skip below still leaves a project to build (an empty one);
+# its compiler is chosen below, from ROCm, before CXX is enabled.
+project (TornadoHipdf NONE)
+
 # libtornado-hipdf: the cuDF shim (tornado-native-libs/cudf-jni/src/main/cpp/source, copied here by
 # the module's pom) compiled unchanged against hipDF, AMD's HIP port of libcudf, for HIP devices.
 # hipDF keeps cuDF's headers and C++ API and ships CUDA-named compatibility headers, so the only
@@ -42,7 +46,7 @@ if(NOT CMAKE_CXX_COMPILER)
     set(CMAKE_CXX_COMPILER "${TORNADO_ROCM_CLANG}")
 endif()
 
-project (TornadoHipdf CXX)
+enable_language(CXX)
 
 # HIPDF_HOME is the libcudf prefix of a hipDF install: the libcudf directory of the amd-libhipdf
 # wheel (whose librmm and rapids_logger wheels install beside it), or a conda prefix. Its
