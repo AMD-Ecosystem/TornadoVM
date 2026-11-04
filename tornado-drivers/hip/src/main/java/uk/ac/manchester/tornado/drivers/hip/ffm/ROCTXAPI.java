@@ -21,6 +21,7 @@
 package uk.ac.manchester.tornado.drivers.hip.ffm;
 
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
+import uk.ac.manchester.tornado.runtime.ffm.ROCmLibraries;
 import static uk.ac.manchester.tornado.runtime.ffm.FFMSupport.C_INT;
 import static uk.ac.manchester.tornado.runtime.ffm.FFMSupport.C_LONG;
 import static uk.ac.manchester.tornado.runtime.ffm.FFMSupport.C_POINTER;

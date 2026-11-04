@@ -36,6 +36,7 @@ import java.util.Comparator;
 import java.util.List;
 
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
+import uk.ac.manchester.tornado.runtime.ffm.ROCmLibraries;
 
 /**
  * Panama bindings for hipRTC, which compiles the generated HIP C++ to an AMD GPU code object at run

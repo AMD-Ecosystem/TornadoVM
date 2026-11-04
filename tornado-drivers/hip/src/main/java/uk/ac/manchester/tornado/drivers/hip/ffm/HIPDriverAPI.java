@@ -34,6 +34,7 @@ import java.lang.invoke.MethodHandle;
 import java.util.List;
 
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
+import uk.ac.manchester.tornado.runtime.ffm.ROCmLibraries;
 
 /**
  * Panama bindings for the subset of the HIP runtime ({@code amdhip64}) the backend uses. One static

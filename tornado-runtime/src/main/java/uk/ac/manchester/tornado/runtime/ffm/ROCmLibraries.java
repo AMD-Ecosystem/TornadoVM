@@ -18,14 +18,13 @@
  * limitations under the License.
  *
  */
-package uk.ac.manchester.tornado.drivers.hip.ffm;
+package uk.ac.manchester.tornado.runtime.ffm;
 
 import java.io.File;
 import java.lang.foreign.SymbolLookup;
 import java.util.ArrayList;
 import java.util.List;
 
-import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
 
 /**
  * Finds the ROCm libraries the HIP backend and the ROCm library tasks bind. Each library is tried by
