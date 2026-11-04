@@ -241,7 +241,8 @@ public final class MIOpenLibraryProvider implements TornadoLibraryProvider {
         return switch (status) {
             case CkAttentionNativeLib.SUCCESS -> 0;
             case CkAttentionNativeLib.NO_KERNEL -> throw new TornadoLibraryTaskNotSupported("[UNSUPPORTED] fused SDPA: libtornado-ck has no attention kernel for this GPU and head dimension " + d);
-            default -> throw new TornadoRuntimeException("[ERROR] fused SDPA: invalid arguments for the attention kernel (b=" + b + ", h=" + h + ", sQ=" + sQ + ", sKv=" + sKv + ", d=" + d + ")");
+            default -> throw new TornadoRuntimeException("[ERROR] fused SDPA: invalid arguments for the attention kernel (b=" + b + ", h=" + h + ", sQ=" + sQ + ", sKv=" + sKv + ", d=" + d
+                    + "; head dim multiple of 8, <= 256)");
         };
     }
 

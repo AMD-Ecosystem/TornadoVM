@@ -27,7 +27,8 @@
  * Fused FP16 attention forward with CK's tile FMHA kernels: O = softmax(Q K^T * scale [+ causal
  * mask]) V. strides: 16 element strides, (batch, head, sequence, dim) of Q, K, V and then O; the
  * dim strides must be 1. Returns 0 on success, 1 when no kernel covers the shape on this GPU, 2
- * for an invalid argument.
+ * for an invalid argument, which includes a head dimension d that is not a multiple of 8 or is
+ * above 256: cuDNN refuses those too, and the kernels compute them wrong.
  */
 extern "C" int tornado_ck_sdpa_forward(hipStream_t stream, const void* q, const void* k, const void* v, void* o, int b, int h, int sQ,
                                        int sKv, int d, float scale, int causal, const long long* strides) {
@@ -37,6 +38,9 @@ extern "C" int tornado_ck_sdpa_forward(hipStream_t stream, const void* q, const 
         }
     }
     if (strides[3] != 1 || strides[7] != 1 || strides[11] != 1 || strides[15] != 1) {
+        return 2;
+    }
+    if (d % 8 != 0 || d > 256) {
         return 2;
     }
     fmha_fwd_traits traits{};
