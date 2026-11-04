@@ -47,6 +47,8 @@
 ; CHECK-NEXT:  #define TC_WMMA11 1
 ; CHECK-NEXT:  #elif defined(__gfx1200__) || defined(__gfx1201__)
 ; CHECK-NEXT:  #define TC_WMMA12 1
+; CHECK-NEXT:  #else
+; CHECK-NEXT:  #error "KernelContext MMA: no matrix-core lowering for this GPU architecture"
 ; CHECK-NEXT:  #endif
 ; CHECK-NEXT:  typedef _Float16 tc_h4_t __attribute__((ext_vector_type(4)));
 ; CHECK-NEXT:  typedef _Float16 tc_h8_t __attribute__((ext_vector_type(8)));
@@ -210,8 +212,6 @@
 ; CHECK-NEXT:                     : __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(__builtin_bit_cast(tc_h8_t, aw), __builtin_bit_cast(tc_h8_t, bw), z);
 ; CHECK-NEXT:    return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
 ; CHECK-NEXT:        c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
-; CHECK-NEXT:  #else
-; CHECK-NEXT:    return c;
 ; CHECK-NEXT:  #endif
 ; CHECK-NEXT:  }
 ; CHECK-NEXT:  // D = A x B + C for FP8 inputs (m16n8k32), widened exactly to halves and multiplied as halves.
@@ -260,8 +260,6 @@
 ; CHECK-NEXT:    }
 ; CHECK-NEXT:    return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
 ; CHECK-NEXT:        c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
-; CHECK-NEXT:  #else
-; CHECK-NEXT:    return c;
 ; CHECK-NEXT:  #endif
 ; CHECK-NEXT:  }
 ; CHECK-NEXT:  #endif

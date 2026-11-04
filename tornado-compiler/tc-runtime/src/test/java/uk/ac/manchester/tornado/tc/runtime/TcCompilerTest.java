@@ -110,6 +110,38 @@ public class TcCompilerTest {
         assertEquals(List.of(), legality("tornado.mma.m16n8k32_e4m3", TargetCaps.CUDA_SM89));
     }
 
+    private static TargetCaps hip(String arch) {
+        return TargetCaps.hip(arch, true, true, 16, 1024, 64 * 1024, arch.startsWith("gfx9") ? 64 : 32);
+    }
+
+    /** HIP: MMA (FP8 included, widened to halves) on CDNA MFMA and on gfx11 and gfx1200/gfx1201 WMMA; TC-E4017 on any other GPU. */
+    @Test
+    public void legalityChecksHipMatrixCores() {
+        for (String arch : List.of("gfx908", "gfx90a", "gfx940", "gfx941", "gfx942", "gfx950")) {
+            assertEquals(TargetCaps.MatrixCores.MFMA, hip(arch).matrixCores(), arch);
+        }
+        for (String arch : List.of("gfx1100", "gfx1101", "gfx1102", "gfx1103", "gfx1150", "gfx1151")) {
+            assertEquals(TargetCaps.MatrixCores.WMMA_GFX11, hip(arch).matrixCores(), arch);
+        }
+        for (String arch : List.of("gfx1200", "gfx1201")) {
+            assertEquals(TargetCaps.MatrixCores.WMMA_GFX12, hip(arch).matrixCores(), arch);
+        }
+        for (String arch : List.of("gfx908", "gfx942", "gfx950", "gfx1100", "gfx1151", "gfx1201")) {
+            assertTrue(hip(arch).mma() && hip(arch).fp8Mma(), arch);
+            assertEquals(List.of(), legality("tornado.mma.m16n8k16", hip(arch)), arch);
+            assertEquals(List.of(), legality("tornado.mma.m16n8k32_e4m3", hip(arch)), arch);
+        }
+        for (String arch : List.of("gfx900", "gfx906", "gfx943", "gfx951", "gfx1030", "gfx1250", "gfx1210", "")) {
+            assertEquals(TargetCaps.MatrixCores.NONE, hip(arch).matrixCores(), arch);
+            assertFalse(hip(arch).mma() || hip(arch).fp8Mma(), arch);
+            assertEquals(List.of("TC-E4017"), legality("tornado.mma.m16n8k16", hip(arch)), arch);
+            assertEquals(List.of("TC-E4017"), legality("tornado.mma.m16n8k32_e5m2", hip(arch)), arch);
+        }
+        // copies staged for MMA run synchronously on any AMD GPU
+        assertEquals(List.of(), legality("tornado.async_copy.commit", hip("gfx906")));
+        assertEquals(TargetCaps.MatrixCores.NONE, TargetCaps.CUDA_SM89.matrixCores());
+    }
+
     @Test
     public void failureBecomesDiagnosticsNotExceptions() {
         var broken = KERNEL.replace("%y = fmul %x, %f : f32", "%y = fmul %x, %i : f32");

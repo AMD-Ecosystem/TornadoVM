@@ -115,7 +115,7 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
     public enum MatrixCores {
         /** None this lowering targets. */
         NONE,
-        /** CDNA (gfx908, gfx90a, gfx942, gfx950): MFMA. */
+        /** CDNA (gfx908, gfx90a, gfx940, gfx941, gfx942, gfx950): MFMA. */
         MFMA,
         /** RDNA3 (gfx11): WMMA. */
         WMMA_GFX11,
@@ -123,12 +123,15 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
         WMMA_GFX12
     }
 
-    /** The matrix instructions of {@link #arch}; {@link MatrixCores#NONE} for a GPU without them, and for any other dialect. */
+    /**
+     * The matrix instructions of {@link #arch}; {@link MatrixCores#NONE} for a GPU without them, and for any
+     * other dialect. The architectures are those the MMA helpers' preprocessor routing names (Helpers).
+     */
     public MatrixCores matrixCores() {
         if (dialect != Dialect.HIP) {
             return MatrixCores.NONE;
         }
-        if (arch.equals("gfx908") || arch.equals("gfx90a") || arch.startsWith("gfx94") || arch.startsWith("gfx95")) {
+        if (arch.equals("gfx908") || arch.equals("gfx90a") || arch.equals("gfx940") || arch.equals("gfx941") || arch.equals("gfx942") || arch.equals("gfx950")) {
             return MatrixCores.MFMA;
         }
         if (arch.startsWith("gfx11")) {

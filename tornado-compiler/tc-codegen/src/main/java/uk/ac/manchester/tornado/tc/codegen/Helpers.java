@@ -308,6 +308,8 @@ final class Helpers {
                     #define TC_WMMA11 1
                     #elif defined(__gfx1200__) || defined(__gfx1201__)
                     #define TC_WMMA12 1
+                    #else
+                    #error "KernelContext MMA: no matrix-core lowering for this GPU architecture"
                     #endif
                     typedef _Float16 tc_h4_t __attribute__((ext_vector_type(4)));
                     typedef _Float16 tc_h8_t __attribute__((ext_vector_type(8)));
@@ -471,8 +473,6 @@ final class Helpers {
                                        : __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(__builtin_bit_cast(tc_h8_t, aw), __builtin_bit_cast(tc_h8_t, bw), z);
                       return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
                           c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
-                    #else
-                      return c;
                     #endif
                     }
                     // D = A x B + C for FP8 inputs (m16n8k32), widened exactly to halves and multiplied as halves.
@@ -521,8 +521,6 @@ final class Helpers {
                       }
                       return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
                           c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
-                    #else
-                      return c;
                     #endif
                     }
                     #endif
@@ -671,8 +669,6 @@ final class Helpers {
                         d = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32_gfx12(true, av, true, bv, d, false);
                       }
                       return make_int4(c.x + tc_wmma_out<tc_i8_t, int>(d, 0), c.y + tc_wmma_out<tc_i8_t, int>(d, 1), c.z + tc_wmma_out<tc_i8_t, int>(d, 2), c.w + tc_wmma_out<tc_i8_t, int>(d, 3));
-                    #else
-                      return c;
                     #endif
                     }
                     """),
