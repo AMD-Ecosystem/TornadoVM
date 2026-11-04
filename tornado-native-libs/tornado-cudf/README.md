@@ -76,8 +76,9 @@ The `hip-backend` profile builds the same shim, unchanged, against hipDF -- AMD'
 libcudf, which keeps cuDF's headers and C++ API -- in `tornado-native-libs/cudf-hip`, into
 `libtornado-hipdf.so`. As with RAPIDS, the build skips it with a warning when hipDF is absent
 (`TORNADO_HIPDF_REQUIRED=1` makes that an error). hipDF ships as wheels on AMD's package index:
-`amd-libhipdf` carries libcudf's headers and libraries and `amd-libhipmm` librmm (with
-rapids_logger), which install as sibling directories:
+`amd-libhipdf` carries libcudf's headers and libraries, `amd-libhipmm` librmm, and
+`amd-rocmds-logger` (which `amd-libhipmm` depends on) rapids_logger; they install as sibling
+directories:
 
 ```bash
 python3 -m venv /tmp/hipdfenv
