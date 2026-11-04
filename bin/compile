@@ -290,6 +290,11 @@ def build_tornadovm(args, backend_profiles):
         process.append("install")
         print(' '.join(process))
 
+        # The HIP backend's native kernels (ck-hip) are well over a hundred CK translation units;
+        # the CMake builds Maven starts are serial unless told otherwise.
+        if "hip" in backend_list and "CMAKE_BUILD_PARALLEL_LEVEL" not in os.environ:
+            os.environ["CMAKE_BUILD_PARALLEL_LEVEL"] = os.environ.get("MAX_JOBS") or str(os.cpu_count() or 1)
+
         result = subprocess.run(
             process,
             check=True,

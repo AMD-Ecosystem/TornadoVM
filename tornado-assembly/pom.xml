@@ -212,6 +212,12 @@
                     <artifactId>tornado-cudnn</artifactId>
                     <version>${project.version}</version>
                 </dependency>
+                <dependency>
+                    <groupId>${project.groupId}</groupId>
+                    <artifactId>tornado-drivers-ck-hip</artifactId>
+                    <version>${project.version}</version>
+                    <classifier>libs</classifier>
+                </dependency>
             </dependencies>
         </profile>
 
