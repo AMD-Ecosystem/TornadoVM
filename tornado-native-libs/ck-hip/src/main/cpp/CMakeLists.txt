@@ -151,5 +151,10 @@ set_source_files_properties("source/tornado-ck-sdpa.cpp" ${CK_FMHA_SOURCES} PROP
     "-DCK_TILE_FMHA_FWD_FAST_EXP2=1;-fgpu-flush-denormals-to-zero;-DCK_TILE_FMHA_FWD_SPLITKV_API=0;-DCK_TILE_FMHA_FWD_APPENDKV_API=0;-DCK_TILE_FMHA_FWD_PAGEDKV_API=0;-DCK_TILE_USE_OCP_FP8")
 target_link_libraries(tornado-ck PRIVATE hip::host)
 
+# CK's newer unified tile framework needs the host pass to know the GPU target, which CK takes as
+# the first of CK_CMAKE_GPU_TARGET_IDS for every pass and so breaks a build that mixes gfx9 and
+# gfx11 targets. Its legacy WarpGemm path (what CK itself uses for gfx1250) has no such dependence.
+target_compile_definitions(tornado-ck PRIVATE USE_NEW_UNIFIED_FRAMEWORK=0)
+
 list(LENGTH CK_FMHA_SOURCES CK_FMHA_COUNT)
 message(STATUS "TornadoVM CK: ROCm=${ROCM_ROOT}; targets=${TORNADO_CK_GPU_TARGETS}; compiler=${CMAKE_HIP_COMPILER}; ${CK_FMHA_COUNT} attention sources")
