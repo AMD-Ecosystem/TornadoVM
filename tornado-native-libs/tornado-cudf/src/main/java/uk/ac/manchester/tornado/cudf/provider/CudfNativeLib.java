@@ -25,11 +25,17 @@ import java.lang.foreign.FunctionDescriptor;
 import java.lang.foreign.SymbolLookup;
 import java.lang.invoke.MethodHandle;
 
+import uk.ac.manchester.tornado.api.TornadoRuntime;
+import uk.ac.manchester.tornado.api.enums.TornadoVMBackendType;
+import uk.ac.manchester.tornado.api.exceptions.TornadoLibraryTaskNotSupported;
 import uk.ac.manchester.tornado.api.exceptions.TornadoRuntimeException;
+import uk.ac.manchester.tornado.api.runtime.TornadoRuntimeProvider;
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
 
 /**
- * FFM bindings to {@code libtornado-cudf.so}, the {@code extern "C"} shim over cuDF.
+ * FFM bindings to {@code libtornado-cudf.so}, the {@code extern "C"} shim over cuDF, or, when
+ * TornadoVM runs on AMD GPUs, to {@code libtornado-hipdf.so}: the same shim built against hipDF,
+ * AMD's HIP port of libcudf, by {@code tornado-native-libs/cudf-hip}.
  *
  * <p>
  * Every entry point takes the stream to run on, device pointers for its operands, and returns a
@@ -38,6 +44,12 @@ import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
  * cuDF task sit in the same task graph as a generated kernel and read what it wrote.
  */
 public final class CudfNativeLib {
+
+    /**
+     * Whether the shim is the hipDF build, for HIP devices: {@code -Dtornado.cudf.library=hipdf|cudf},
+     * else hipDF when the HIP backend is installed without the CUDA one or is the default backend.
+     */
+    private static final boolean HIPDF = useHipdf();
 
     /**
      * The shim, not cuDF itself.
@@ -54,7 +66,8 @@ public final class CudfNativeLib {
      * library the SDK ships in its own {@code lib/} rather than one the system provides, so it is
      * on {@code java.library.path} and not on the loader's path.
      */
-    private static final SymbolLookup LIBTORNADO_CUDF = FFMSupport.loadBundledLibrary("libtornado-cudf.so", "tornado-cudf.dll", "libtornado-cudf.dylib");
+    private static final SymbolLookup LIBTORNADO_CUDF = HIPDF ? FFMSupport.loadBundledLibrary("libtornado-hipdf.so")
+            : FFMSupport.loadBundledLibrary("libtornado-cudf.so", "tornado-cudf.dll", "libtornado-cudf.dylib");
 
     private static final MethodHandle SORTED_ORDER;
     private static final MethodHandle GROUP_SUM;
@@ -203,6 +216,26 @@ public final class CudfNativeLib {
     }
 
     private CudfNativeLib() {
+    }
+
+    private static boolean useHipdf() {
+        String library = System.getProperty("tornado.cudf.library", "");
+        if (!library.isBlank()) {
+            return library.trim().equalsIgnoreCase("hipdf");
+        }
+        TornadoRuntime runtime = TornadoRuntimeProvider.getTornadoRuntime();
+        boolean hip = false;
+        boolean cuda = false;
+        for (int i = 0; i < runtime.getNumBackends(); i++) {
+            hip |= runtime.getBackendType(i) == TornadoVMBackendType.HIP;
+            cuda |= runtime.getBackendType(i) == TornadoVMBackendType.CUDA;
+        }
+        return hip && (!cuda || runtime.getBackendType(0) == TornadoVMBackendType.HIP);
+    }
+
+    /** Whether the shim is the hipDF build, whose tasks run on HIP devices. */
+    public static boolean isHipdf() {
+        return HIPDF;
     }
 
     /** Whether the shim is present and exports everything this module calls. */
@@ -471,6 +504,10 @@ public final class CudfNativeLib {
     }
 
     static void load() {
+        if (!isAvailable() && HIPDF) {
+            throw new TornadoRuntimeException("[ERROR] Unable to load the cuDF shim for HIP devices. Build libtornado-hipdf.so against hipDF "
+                    + "-- see tornado-native-libs/tornado-cudf/README.md -- and put hipDF's libraries on the library path.");
+        }
         if (!isAvailable()) {
             throw new TornadoRuntimeException("[ERROR] Unable to load the cuDF shim. Build libtornado-cudf.so against RAPIDS libcudf "
                     + "-- see tornado-native-libs/tornado-cudf/README.md -- and put it on the library path.");
@@ -496,8 +533,15 @@ public final class CudfNativeLib {
                 detail = "";
             }
         }
+        if (HIPDF && detail.contains(HIPDF_NO_ZSTD)) {
+            // a codec the hipDF build lacks, not a failure of the task's inputs
+            throw new TornadoLibraryTaskNotSupported("[UNSUPPORTED] cuDF " + what + " on hipDF" + detail);
+        }
         throw new TornadoRuntimeException("[ERROR] cuDF " + what + " failed with status " + status + detail);
     }
+
+    /** What hipDF reports when asked to write Zstandard pages, which its GPU compressor does not provide yet. */
+    private static final String HIPDF_NO_ZSTD = "required for Zstandard compression";
 
     static int sortedOrder(long stream, long keys, int n, long outOrder) {
         try {
