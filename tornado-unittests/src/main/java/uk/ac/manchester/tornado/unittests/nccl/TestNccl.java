@@ -239,7 +239,7 @@ public class TestNccl extends TornadoTestBase {
         TornadoDevice[] devices = cudaDevices();
         int n = devices.length;
         FloatArray[] buffers = new FloatArray[n];
-        try (NcclCommunicator communicator = NcclCommunicator.create(NcclUniqueId.create(), n, 0, devices)) {
+        try (NcclCommunicator communicator = NcclCommunicator.create(NcclUniqueId.create(devices), n, 0, devices)) {
             assertEquals(n, communicator.size());
             runRanks(devices, SIZE, 1, 1, (rank, name) -> {
                 buffers[rank] = new FloatArray(SIZE);

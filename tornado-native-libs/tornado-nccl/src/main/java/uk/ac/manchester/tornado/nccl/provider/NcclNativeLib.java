@@ -33,7 +33,6 @@ import java.util.List;
 
 import uk.ac.manchester.tornado.api.enums.TornadoVMBackendType;
 import uk.ac.manchester.tornado.api.exceptions.TornadoRuntimeException;
-import uk.ac.manchester.tornado.api.runtime.TornadoRuntimeProvider;
 import uk.ac.manchester.tornado.runtime.ffm.FFMSupport;
 import uk.ac.manchester.tornado.runtime.ffm.ROCmLibraries;
 
@@ -182,12 +181,19 @@ public final class NcclNativeLib {
         return rccl ? Rccl.BINDINGS : Nccl.BINDINGS;
     }
 
-    /** As {@link #forBackend}, for the default device, for calls that name no device. */
-    public static NcclNativeLib forDefaultDevice() {
+    /**
+     * The bindings for calls that name no device, chosen without starting any backend: the library
+     * {@code -Dtornado.nccl.library=rccl|nccl} names, else NCCL when it can be loaded, else RCCL when
+     * it can, else NCCL (whose {@link #load()} then reports it missing).
+     */
+    public static NcclNativeLib withoutDevice() {
         if (!System.getProperty("tornado.nccl.library", "").isBlank()) {
             return forBackend(null);
         }
-        return forBackend(TornadoRuntimeProvider.getTornadoRuntime().getDefaultDevice().getTornadoVMBackend());
+        if (!Nccl.BINDINGS.isAvailable() && Rccl.BINDINGS.isAvailable()) {
+            return Rccl.BINDINGS;
+        }
+        return Nccl.BINDINGS;
     }
 
     /** Whether the collectives run through RCCL (AMD GPUs) rather than NCCL. */

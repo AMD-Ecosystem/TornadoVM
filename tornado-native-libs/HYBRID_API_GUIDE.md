@@ -455,7 +455,7 @@ running until every rank has joined: NCCL's bootstrap listener lives in it.
 
 ```java
 // rank 0
-NcclUniqueId id = NcclUniqueId.create();
+NcclUniqueId id = NcclUniqueId.create(gpu);
 publish(id.toBase64());                                         // however the job reaches its processes
 NcclCommunicator comm = NcclCommunicator.create(id, worldSize, 0, gpu);
 // every other process

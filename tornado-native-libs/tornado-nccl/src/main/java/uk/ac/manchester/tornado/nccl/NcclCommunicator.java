@@ -138,7 +138,7 @@ public final class NcclCommunicator implements AutoCloseable {
     }
 
     /** The library of the devices' backend (NCCL, or RCCL for HIP devices), which must be the same for all of them. */
-    private static NcclNativeLib bindings(TornadoDevice[] devices) {
+    static NcclNativeLib bindings(TornadoDevice[] devices) {
         NcclNativeLib lib = NcclNativeLib.forBackend(devices[0].getTornadoVMBackend());
         for (TornadoDevice device : devices) {
             if (NcclNativeLib.forBackend(device.getTornadoVMBackend()) != lib) {
