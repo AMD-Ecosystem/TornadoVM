@@ -61,6 +61,9 @@ The matching tasks then report `UNSUPPORTED` at run time.
 The pin is a commit of Composable Kernel's development branch rather than a release tag, because the
 release tags (up to `rocm-7.2.4`) have no attention kernels for gfx11 (RDNA3) GPUs; it moves to the
 first release tag that has them.
+On Windows, `ck-hip` builds its kernels with Ninja and ROCm's `clang-cl` (Ninja on `PATH`, CMake 4.0 or
+newer) for the GPUs named in `TORNADO_CK_GPU_TARGETS`, for example `set TORNADO_CK_GPU_TARGETS=gfx1151`;
+without that variable it skips. `cudf-hip` skips on Windows, where hipDF has no build.
 
 ## Using a library from Maven
 
