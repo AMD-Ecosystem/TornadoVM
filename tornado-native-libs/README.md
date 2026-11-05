@@ -58,6 +58,9 @@ Each shim skips itself with a CMake warning when its library (cuDNN, libcudf, CU
 The matching tasks then report `UNSUPPORTED` at run time.
 `ck-hip` fetches a pinned Composable Kernel commit when it is configured; offline, set
 `TORNADO_CK_SOURCE_DIR` to a checkout of that commit (named in its `CMakeLists.txt`).
+The pin is a commit of Composable Kernel's development branch rather than a release tag, because the
+release tags (up to `rocm-7.2.4`) have no attention kernels for gfx11 (RDNA3) GPUs; it moves to the
+first release tag that has them.
 
 ## Using a library from Maven
 

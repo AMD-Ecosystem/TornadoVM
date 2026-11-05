@@ -63,6 +63,9 @@ find_package(Python3 REQUIRED COMPONENTS Interpreter)
 # CK is header-only plus a code generator for the attention kernels; fetch just those two
 # directories of a pinned commit (the whole repository is large). Offline, point
 # TORNADO_CK_SOURCE_DIR (CMake variable or environment variable) at a checkout of that commit.
+# The pin is a commit of CK's development branch, not a release tag: the release tags (up to
+# rocm-7.2.4) generate no FMHA forward kernels for gfx11 (RDNA3), so SDPA would be unsupported on
+# those GPUs. Move it to the first CK release tag that has them.
 set(CK_COMMIT 9abc8908235e8a62460f81d4e54866586b3cda9d)
 if(NOT TORNADO_CK_SOURCE_DIR AND DEFINED ENV{TORNADO_CK_SOURCE_DIR} AND NOT "$ENV{TORNADO_CK_SOURCE_DIR}" STREQUAL "")
     set(TORNADO_CK_SOURCE_DIR "$ENV{TORNADO_CK_SOURCE_DIR}")
