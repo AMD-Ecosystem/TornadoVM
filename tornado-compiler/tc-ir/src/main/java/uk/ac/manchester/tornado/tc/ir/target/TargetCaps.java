@@ -101,7 +101,7 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
 
     /**
      * Warp-level tensor-core MMA ({@code mma.sync} m16n8k16/k32) and {@code cp.async}: CUDA sm_80 or newer,
-     * or an AMD GPU with matrix cores (MFMA on CDNA, WMMA on RDNA3 and RDNA4).
+     * or an AMD GPU with matrix cores (MFMA on CDNA, WMMA on RDNA3, RDNA4 and gfx1250).
      */
     public boolean mma() {
         return switch (dialect) {
@@ -120,7 +120,9 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
         /** RDNA3 (gfx11): WMMA. */
         WMMA_GFX11,
         /** RDNA4 (gfx1200, gfx1201): WMMA. */
-        WMMA_GFX12
+        WMMA_GFX12,
+        /** gfx1250: its own WMMA forms (16x16x32 for 16-bit, 16x16x64 for 8-bit inputs). */
+        WMMA_GFX1250
     }
 
     /**
@@ -140,6 +142,9 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
         if (arch.equals("gfx1200") || arch.equals("gfx1201")) {
             return MatrixCores.WMMA_GFX12;
         }
+        if (arch.equals("gfx1250")) {
+            return MatrixCores.WMMA_GFX1250;
+        }
         return MatrixCores.NONE;
     }
 
@@ -149,7 +154,8 @@ public record TargetCaps(Dialect dialect, int computeCapability, boolean fp64, b
      */
     public boolean fp8Mma() {
         if (dialect == Dialect.HIP) {
-            // FP8 inputs are widened exactly to halves and multiplied by the half-precision instructions.
+            // FP8 inputs are multiplied natively on gfx1250 and elsewhere widened exactly to halves for the
+            // half-precision instructions.
             return mma();
         }
         return mma() && computeCapability >= 89 && (nvrtcVersion <= 0 || nvrtcVersion >= NVRTC_PTX_ISA_8_4);

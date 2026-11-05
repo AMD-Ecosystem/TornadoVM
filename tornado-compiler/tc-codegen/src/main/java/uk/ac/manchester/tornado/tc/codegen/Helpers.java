@@ -308,6 +308,8 @@ final class Helpers {
                     #define TC_WMMA11 1
                     #elif defined(__gfx1200__) || defined(__gfx1201__)
                     #define TC_WMMA12 1
+                    #elif defined(__gfx1250__)
+                    #define TC_WMMA1250 1
                     #else
                     #error "KernelContext MMA: no matrix-core lowering for this GPU architecture"
                     #endif
@@ -323,6 +325,9 @@ final class Helpers {
                     typedef int tc_i2_t __attribute__((ext_vector_type(2)));
                     typedef int tc_i4_t __attribute__((ext_vector_type(4)));
                     typedef int tc_i8_t __attribute__((ext_vector_type(8)));
+                    #if defined(TC_WMMA1250)
+                    typedef __bf16 tc_b16_t __attribute__((ext_vector_type(16)));
+                    #endif
                     // A fragment lives in the registers of a 32-lane warp in the PTX m16n8 layouts: register i of lane
                     // 4g + t holds k-word 4(i/2) + t of row g + 8(i%2) of A; register j holds k-word 4j + t of column g of
                     // B. A k-word is 2 halves (k16 shapes) or 4 bytes (k32 shapes). These fetch k-word w = 4wq + wl of a
@@ -403,9 +408,10 @@ final class Helpers {
                       int i = (row >> 1) & 3;
                       return i == 0 ? x : i == 1 ? y : i == 2 ? z : w;
                     }
-                    #elif defined(TC_WMMA12)
+                    #elif defined(TC_WMMA12) || defined(TC_WMMA1250)
                     // As on RDNA3, but lane l supplies k = 8(l / 16) .. 8(l / 16) + 7 of row l % 16 of A and of column
-                    // l % 16 of B, and receives column l % 16 of rows 8(l / 16) + i of the result.
+                    // l % 16 of B, and receives column l % 16 of rows 8(l / 16) + i of the result. gfx1250's longer
+                    // forms repeat that every 16 k: lane l holds k = 16j + 8(l / 16) .. 16j + 8(l / 16) + 7 for each j.
                     template <typename V, typename T> __device__ static inline T tc_wmma_out(V d, int e) {
                       int row = tc_mma_row(e), col = tc_mma_col(e), src = col + 16 * (row >> 3);
                       T v[8];
@@ -417,6 +423,23 @@ final class Helpers {
                         r = (row & 7) == i ? v[i] : r;
                       }
                       return r;
+                    }
+                    #endif
+                    #if defined(TC_WMMA1250)
+                    // The A and B operands of gfx1250's 16x16x64 8-bit forms for a k32 fragment pair (k 32-63 zero): lane
+                    // l holds k-words 2(l / 16), 2(l / 16) + 1, 4 + 2(l / 16) and 5 + 2(l / 16) of row l % 16 of A and of
+                    // column l % 16 of B, the columns past the warp's 8 being zero.
+                    __device__ static inline void tc_wmma1250_k32(int4 a, int2 b, tc_i8_t &av, tc_i8_t &bv) {
+                      int l = (int) __lane_id(), m = l & 15, half = l >> 4;
+                      av = {};
+                      bv = {};
+                      for (int kb = 0; kb < 2; kb++) {
+                        for (int h = 0; h < 2; h++) {
+                          av[2 * kb + h] = tc_mma_a_word(a, m, kb, 2 * half + h);
+                          int bword = tc_mma_b_word(b, m, kb, 2 * half + h);
+                          bv[2 * kb + h] = m < 8 ? bword : 0;
+                        }
+                      }
                     }
                     #endif
                     // D = A x B + C for 16-bit inputs (m16n8k16): CVT names the half or bfloat16 vector types.
@@ -473,6 +496,20 @@ final class Helpers {
                                        : __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(__builtin_bit_cast(tc_h8_t, aw), __builtin_bit_cast(tc_h8_t, bw), z);
                       return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
                           c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
+                    #elif defined(TC_WMMA1250)
+                      // 16x16x32 with k 16-31 zero: the first 8 values of each lane are the RDNA4 operand.
+                      int l = (int) __lane_id(), m = l & 15, wq = l >> 4;
+                      tc_i8_t aw = {}, bw = {};
+                      for (int j = 0; j < 4; j++) {
+                        aw[j] = tc_mma_a_word_any(a, m, wq, j);
+                        int bword = tc_mma_b_word_any(b, m, wq, j);
+                        bw[j] = m < 8 ? bword : 0;
+                      }
+                      tc_f8_t z = {};
+                      tc_f8_t d = BF16 ? __builtin_amdgcn_wmma_f32_16x16x32_bf16(false, __builtin_bit_cast(tc_b16_t, aw), false, __builtin_bit_cast(tc_b16_t, bw), (short) 0, z, false, false)
+                                       : __builtin_amdgcn_wmma_f32_16x16x32_f16(false, __builtin_bit_cast(tc_h16_t, aw), false, __builtin_bit_cast(tc_h16_t, bw), (short) 0, z, false, false);
+                      return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
+                          c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
                     #endif
                     }
                     // D = A x B + C for FP8 inputs (m16n8k32), widened exactly to halves and multiplied as halves.
@@ -519,6 +556,15 @@ final class Helpers {
                         }
                         d = __builtin_amdgcn_wmma_f32_16x16x16_f16_w32_gfx12(av, bv, d);
                       }
+                      return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
+                          c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
+                    #elif defined(TC_WMMA1250)
+                      // gfx1250 multiplies E4M3 (fp8) and E5M2 (bf8) natively.
+                      tc_i8_t av, bv;
+                      tc_wmma1250_k32(a, b, av, bv);
+                      tc_f8_t z = {};
+                      tc_f8_t d = E4M3 ? __builtin_amdgcn_wmma_f32_16x16x64_fp8_fp8(av, bv, (short) 0, z, false, false)
+                                       : __builtin_amdgcn_wmma_f32_16x16x64_bf8_bf8(av, bv, (short) 0, z, false, false);
                       return make_float4(c.x + tc_wmma_out<tc_f8_t, float>(d, 0), c.y + tc_wmma_out<tc_f8_t, float>(d, 1), c.z + tc_wmma_out<tc_f8_t, float>(d, 2),
                           c.w + tc_wmma_out<tc_f8_t, float>(d, 3));
                     #endif
@@ -573,7 +619,7 @@ final class Helpers {
                     """),
             // Tensor-core MMA on AMD matrix cores. Fragments keep the PTX m16n8 layouts KernelContext documents
             // (the loads read what ldmatrix and movmatrix would); mma moves them into the operand layouts of
-            // MFMA (CDNA, 4x4 blocks within each warp) or WMMA (RDNA3, RDNA4) and the result back.
+            // MFMA (CDNA, 4x4 blocks within each warp) or WMMA (RDNA3, RDNA4, gfx1250) and the result back.
             Map.entry("tc_mma_load_a", """
                     // A: a 16 x k row-major tile of elementBytes-wide elements, as ldmatrix .x4 reads it: register j holds
                     // row 8(j%2) + g, bytes 16(j/2) + 4t of the tile.
@@ -668,6 +714,12 @@ final class Helpers {
                         }
                         d = __builtin_amdgcn_wmma_i32_16x16x16_iu8_w32_gfx12(true, av, true, bv, d, false);
                       }
+                      return make_int4(c.x + tc_wmma_out<tc_i8_t, int>(d, 0), c.y + tc_wmma_out<tc_i8_t, int>(d, 1), c.z + tc_wmma_out<tc_i8_t, int>(d, 2), c.w + tc_wmma_out<tc_i8_t, int>(d, 3));
+                    #elif defined(TC_WMMA1250)
+                      tc_i8_t av, bv;
+                      tc_wmma1250_k32(a, b, av, bv);
+                      tc_i8_t z = {};
+                      tc_i8_t d = __builtin_amdgcn_wmma_i32_16x16x64_iu8(true, av, true, bv, z, false, false);
                       return make_int4(c.x + tc_wmma_out<tc_i8_t, int>(d, 0), c.y + tc_wmma_out<tc_i8_t, int>(d, 1), c.z + tc_wmma_out<tc_i8_t, int>(d, 2), c.w + tc_wmma_out<tc_i8_t, int>(d, 3));
                     #endif
                     }

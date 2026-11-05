@@ -107,11 +107,7 @@ public final class Legality {
     }
 
     private static String hipNoMatrixCores(TargetCaps target) {
-        if (target.arch().startsWith("gfx12")) {
-            // gfx1250 has matrix cores, with WMMA shapes of its own that this lowering does not target yet.
-            return "tensor-core MMA is lowered to the gfx11 and gfx1200/gfx1201 WMMA and the CDNA MFMA instructions; " + target.arch() + " is not supported yet";
-        }
-        return "tensor-core MMA needs AMD matrix cores (MFMA on CDNA, WMMA on RDNA3 or RDNA4); the device is " + (target.arch().isEmpty() ? "an AMD GPU without them" : target.arch());
+        return "tensor-core MMA needs AMD matrix cores (MFMA on CDNA, WMMA on RDNA3, RDNA4 or gfx1250); the device is " + (target.arch().isEmpty() ? "an AMD GPU without them" : target.arch());
     }
 
     /**

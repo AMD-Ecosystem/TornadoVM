@@ -48,7 +48,7 @@ public class HipMmaRoutingTest {
                 String macro = switch (target.matrixCores()) {
                     case MFMA -> "defined(__" + arch + "__)";
                     case WMMA_GFX11 -> "defined(__GFX11__)";
-                    case WMMA_GFX12 -> "defined(__" + arch + "__)";
+                    case WMMA_GFX12, WMMA_GFX1250 -> "defined(__" + arch + "__)";
                     case NONE -> null;
                 };
                 if (macro != null) {
