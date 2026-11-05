@@ -32,6 +32,7 @@ import uk.ac.manchester.tornado.api.TaskGraph;
 import uk.ac.manchester.tornado.api.TornadoExecutionPlan;
 import uk.ac.manchester.tornado.api.WorkerGrid;
 import uk.ac.manchester.tornado.api.WorkerGrid1D;
+import uk.ac.manchester.tornado.api.common.TornadoFunctions.Task2;
 import uk.ac.manchester.tornado.api.enums.DataTransferMode;
 import uk.ac.manchester.tornado.api.enums.TornadoVMBackendType;
 import uk.ac.manchester.tornado.api.types.arrays.FloatArray;
@@ -120,6 +121,76 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
         out.set(ctx.globalIdx, ctx.localIdx);
     }
 
+    /** The only write is before a barrier, so every thread's wait ends at its first test. */
+    public static void localFlagSetBeforeBarrierKernel(KernelContext ctx, IntArray out) {
+        int[] flag = ctx.allocateIntLocalArray(1);
+        if (ctx.localIdx == 0) {
+            flag[0] = 1;
+        }
+        ctx.localBarrier();
+        while (ctx.atomicCAS(flag, 0, 1, 1) != 1) {
+        }
+        out.set(ctx.globalIdx, ctx.localIdx);
+    }
+
+    /** Each thread waits for the flag it set itself. */
+    public static void localOwnFlagWaitKernel(KernelContext ctx, IntArray out) {
+        int[] flag = ctx.allocateIntLocalArray(128);
+        flag[ctx.localIdx] = 1;
+        while (ctx.atomicCAS(flag, ctx.localIdx, 1, 1) != 1) {
+        }
+        out.set(ctx.globalIdx, ctx.localIdx);
+    }
+
+    /** Thread 0 sets the flag before threads 32 and up start waiting for it. */
+    public static void localFlagSetBeforeWaitKernel(KernelContext ctx, IntArray out) {
+        int[] flag = ctx.allocateIntLocalArray(1);
+        if (ctx.localIdx == 0) {
+            flag[0] = 0;
+        }
+        ctx.localBarrier();
+        if (ctx.localIdx == 0) {
+            ctx.atomicExchange(flag, 0, 1);
+        }
+        if (ctx.localIdx >= 32) {
+            while (ctx.atomicCAS(flag, 0, 1, 1) != 1) {
+            }
+        }
+        out.set(ctx.globalIdx, ctx.localIdx);
+    }
+
+    /** In groups of 128, threads 0-63 wait for a flag that thread 64 sets: the writer is in the other 64-thread wavefront. */
+    public static void localFlagWaitAcrossWavefrontsKernel(KernelContext ctx, IntArray out) {
+        int[] flag = ctx.allocateIntLocalArray(1);
+        if (ctx.localIdx == 0) {
+            flag[0] = 0;
+        }
+        ctx.localBarrier();
+        if (ctx.localIdx < 64) {
+            while (ctx.atomicCAS(flag, 0, 1, 1) != 1) {
+            }
+        } else if (ctx.localIdx == 64) {
+            ctx.atomicExchange(flag, 0, 1);
+        }
+        out.set(ctx.globalIdx, ctx.localIdx);
+    }
+
+    /** In groups of 128, threads 1-63 wait; thread 0 shares their wavefront, but thread 64 in the other one also sets the flag. */
+    public static void localFlagSetInTwoWavefrontsKernel(KernelContext ctx, IntArray out) {
+        int[] flag = ctx.allocateIntLocalArray(1);
+        if (ctx.localIdx == 0) {
+            flag[0] = 0;
+        }
+        ctx.localBarrier();
+        if (ctx.localIdx == 0 || ctx.localIdx == 64) {
+            ctx.atomicExchange(flag, 0, 1);
+        } else if (ctx.localIdx < 64) {
+            while (ctx.atomicCAS(flag, 0, 1, 1) != 1) {
+            }
+        }
+        out.set(ctx.globalIdx, ctx.localIdx);
+    }
+
     public static void simdgroupMatrixKernel(KernelContext ctx, FloatArray out) {
         Matrix8x8Float zero = ctx.simdgroupMatrixZero();
         ctx.simdgroupMatrixStore(zero, out, 0, 8);
@@ -146,9 +217,13 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
     }
 
     private static void run(String taskId, TaskGraphBody body) {
+        run(taskId, 64, body);
+    }
+
+    private static void run(String taskId, int localSize, TaskGraphBody body) {
         KernelContext context = new KernelContext();
         WorkerGrid worker = new WorkerGrid1D(SIZE);
-        worker.setLocalWork(64, 1, 1);
+        worker.setLocalWork(localSize, 1, 1);
         GridScheduler grid = new GridScheduler("unsupported." + taskId, worker);
         TaskGraph taskGraph = new TaskGraph("unsupported");
         body.build(taskGraph, context, taskId);
@@ -330,6 +405,31 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
         }
         for (int i = 0; i < SIZE; i++) {
             assertEquals(i % 64, out.get(i), "thread " + i);
+        }
+    }
+
+    /**
+     * Waits that complete on every GPU, which TC-E4019 must not refuse: the flag is set before the wait
+     * starts (before a barrier, by the waiting thread itself, or before the threads meet again), or by a
+     * thread in another 64-thread wavefront (also when a thread of the waiters' own wavefront sets it too).
+     */
+    @Test
+    public void testLocalFlagWaitsThatComplete() {
+        runLocalWait("setBeforeBarrier", 64, TestUnsupportedKernelContextOps::localFlagSetBeforeBarrierKernel, 64);
+        runLocalWait("ownFlag", 128, TestUnsupportedKernelContextOps::localOwnFlagWaitKernel, 128);
+        runLocalWait("setBeforeWait", 64, TestUnsupportedKernelContextOps::localFlagSetBeforeWaitKernel, 64);
+        runLocalWait("acrossWavefronts", 128, TestUnsupportedKernelContextOps::localFlagWaitAcrossWavefrontsKernel, 128);
+        runLocalWait("setInTwoWavefronts", 128, TestUnsupportedKernelContextOps::localFlagSetInTwoWavefrontsKernel, 128);
+    }
+
+    private static void runLocalWait(String taskId, int localSize, Task2<KernelContext, IntArray> kernel, int modulus) {
+        IntArray out = new IntArray(SIZE);
+        out.init(-1);
+        run(taskId, localSize, (taskGraph, context, id) -> taskGraph //
+                .task(id, kernel, context, out) //
+                .transferToHost(DataTransferMode.EVERY_EXECUTION, out));
+        for (int i = 0; i < SIZE; i++) {
+            assertEquals(i % modulus, out.get(i), taskId + ": thread " + i);
         }
     }
 

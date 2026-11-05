@@ -247,13 +247,19 @@ warp of the same wavefront writes can hang where it completes on an NVIDIA GPU:
 the waiting loop can run first and never let the write execute. Order such
 accesses with ``localBarrier()`` instead.
 
-Where the compiler can see the pattern, a loop that only rereads local memory
-until it changes, with no barrier in it, in a kernel that writes that local
-array elsewhere, the HIP backend rejects the kernel on a 64-lane GPU with
-``TC-E4019`` instead of letting it hang. The check does not cover waits on
-global memory, whose writer may be another work-group (which does make
-progress), and it also rejects a wait whose writer is in another wavefront of
-the work-group, which would complete.
+Where the compiler can prove the pattern, the HIP backend rejects the kernel on
+a 64-lane GPU with ``TC-E4019`` instead of letting it hang: a loop that only
+rereads local memory until it changes, with no barrier in it, where every
+thread that can write the value after the wait starts is in one wavefront and a
+waiting thread certainly shares it, as told by conditions on ``localIdx`` in a
+kernel that uses no other dimension. Waits that complete are accepted: the value
+is written before the wait starts (by the waiting thread itself, or before a
+barrier or another point where all threads meet again), or a thread in another
+wavefront can write it. A wait the compiler cannot decide is also accepted and
+can still hang, for example when the writing thread is chosen from data, or in
+a kernel that uses ``localIdy`` or another second or third dimension. The check
+does not cover waits on global memory, whose writer may be another work-group
+(which does make progress).
 
 Launching kernels from the device (CUDA Dynamic Parallelism)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

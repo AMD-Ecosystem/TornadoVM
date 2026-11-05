@@ -224,6 +224,23 @@ public class TcCompilerTest {
                   %set = icmp.ne %g, %zero : i1
                   cond_br %set, ^done, ^again""";
         assertEquals(List.of(), waitLegality(global, exchange, hip("gfx950")));
+        // a write the exits do not accept cannot end the wait; the remaining writer is thread 0
+        assertEquals(List.of("TC-E4019"), waitLegality(CAS_WAIT, exchange + "\n  store %flag, %zero", hip("gfx950")));
+        // KernelContext kernels: refused where a waiter certainly shares the only writer's wavefront
+        assertEquals(List.of("TC-E4019"), localWaitKernel("sameWavefront"));
+        assertEquals(List.of("TC-E4019"), localWaitKernel("sameSecondWavefront"));
+        assertEquals(List.of(), localWaitKernel("writtenBeforeBarrier"));
+        assertEquals(List.of(), localWaitKernel("ownWrite"));
+        assertEquals(List.of(), localWaitKernel("writtenBeforeWaiting"));
+        assertEquals(List.of(), localWaitKernel("otherWavefront"));
+        assertEquals(List.of(), localWaitKernel("writersInTwoWavefronts"));
+        assertEquals(List.of(), localWaitKernel("twoDimensional"));
+    }
+
+    private static List<String> localWaitKernel(String method) {
+        var source = uk.ac.manchester.tornado.tc.frontend.Frontend.BytecodeSource.classpath("../tc-frontend/target/test-classes");
+        var c = TcCompiler.compileJava(source, "uk.ac.manchester.tornado.tc.frontend.kernels.LocalWaitKernels", method, hip("gfx950"), TcOptions.DEFAULTS, java.util.List.of());
+        return c.diagnostics().stream().map(d -> d.code()).toList();
     }
 
     /** A bounded search of local memory is not a wait: its exit also depends on the loop counter. */
