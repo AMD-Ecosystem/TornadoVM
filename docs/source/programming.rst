@@ -254,10 +254,12 @@ thread that can write the value after the wait starts is in one wavefront and a
 waiting thread certainly shares it, as told by conditions on ``localIdx`` in a
 kernel that uses no other dimension. Waits that complete are accepted: the value
 is written before the wait starts (by the waiting thread itself, or before a
-barrier or another point where all threads meet again), or a thread in another
-wavefront can write it. A wait the compiler cannot decide is also accepted and
-can still hang, for example when the writing thread is chosen from data, or in
-a kernel that uses ``localIdy`` or another second or third dimension. The check
+barrier or another point where all threads meet again). A wait the compiler
+cannot decide is also accepted and can still hang, for example when the writing
+thread is chosen from data, in a kernel that uses ``localIdy`` or another second
+or third dimension, or when a thread in another wavefront can write the value:
+two wavefronts that release each other's waiters, or a ticket-style wait in
+which every thread writes after its own wait. The check
 does not cover waits on global memory, whose writer may be another work-group
 (which does make progress). The compiler does not know the work-group shape, so
 two launches of a rejected kernel would have completed: a kernel that uses only

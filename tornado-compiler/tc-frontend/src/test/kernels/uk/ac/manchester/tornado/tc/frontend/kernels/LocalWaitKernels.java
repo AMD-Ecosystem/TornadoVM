@@ -22,8 +22,10 @@ import uk.ac.manchester.tornado.api.types.arrays.IntArray;
 
 /**
  * Threads waiting in a loop for a flag in local memory. On a GPU whose 64-lane wavefronts run two
- * 32-lane warps in lockstep, a wait for a write from the waiting thread's own wavefront can hang; the
- * others complete.
+ * 32-lane warps in lockstep, a wait for a write from the waiting thread's own wavefront can hang. A
+ * wait for a value written before it starts completes. A wait for a write from another wavefront can
+ * also hang, for example when two wavefronts release each other's waiters, or in a ticket-style wait
+ * in which every thread writes after its own wait.
  */
 public final class LocalWaitKernels {
 
