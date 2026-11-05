@@ -34,10 +34,11 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import uk.ac.manchester.tornado.api.TornadoBackend;
-import uk.ac.manchester.tornado.api.TornadoExecutionPlan;
+import uk.ac.manchester.tornado.api.TornadoRuntime;
 import uk.ac.manchester.tornado.api.common.TornadoDevice;
 import uk.ac.manchester.tornado.api.enums.TornadoVMBackendType;
 import uk.ac.manchester.tornado.api.exceptions.TornadoRuntimeException;
+import uk.ac.manchester.tornado.api.runtime.TornadoRuntimeProvider;
 import uk.ac.manchester.tornado.nccl.NcclCommunicator;
 import uk.ac.manchester.tornado.nccl.NcclUniqueId;
 import uk.ac.manchester.tornado.nccl.provider.NcclLibraryProvider;
@@ -118,16 +119,17 @@ public class TestNcclMultiProcess extends TornadoTestBase {
     /**
      * {@link NcclUniqueId#create()} names no device and must not start a backend to choose between
      * NCCL and RCCL. A child JVM enables OpenCL next to this test's backend, so OpenCL is backend 0
-     * (and may find no platform at all), creates the id with {@code create()} and runs one rank on
-     * device 0 of this test's backend, which is backend 1 there.
+     * under the default priorities (and may find no platform at all), creates the id with
+     * {@code create()} and runs one rank on device 0 of this test's backend, which it finds by type.
      */
     @Test
     public void testUniqueIdWithoutDeviceStartsNoBackend() throws Exception {
         if (ModuleLayer.boot().findModule("tornado.drivers.opencl").isEmpty()) {
             throw new TornadoVMOpenCLNotSupported("This test needs the OpenCL backend installed, to be the default backend of the child process");
         }
-        String backendName = backend().getDefaultDevice().getTornadoVMBackend().name().toLowerCase(Locale.ROOT);
-        List<String> command = childCommand(List.of("-Dtornado.enabled.backends=opencl," + backendName), mainClass(RankWithIdWithoutDevice.class), "1", "0");
+        TornadoVMBackendType backendType = backend().getDefaultDevice().getTornadoVMBackend();
+        List<String> command = childCommand(List.of("-Dtornado.enabled.backends=opencl," + backendType.name().toLowerCase(Locale.ROOT)), mainClass(RankWithIdWithoutDevice.class),
+                backendType.name(), "0");
         Process child = new ProcessBuilder(command).redirectErrorStream(true).start();
         try {
             ByteArrayOutputStream childOutput = new ByteArrayOutputStream();
@@ -152,13 +154,14 @@ public class TestNcclMultiProcess extends TornadoTestBase {
 
     /**
      * The child of {@link #testUniqueIdWithoutDeviceStartsNoBackend}: a one-rank communicator from an
-     * id created with {@link NcclUniqueId#create()}, on device {@code args[1]} of backend {@code args[0]}.
+     * id created with {@link NcclUniqueId#create()}, on device {@code args[1]} of the backend of type
+     * {@code args[0]}.
      */
     public static final class RankWithIdWithoutDevice {
         public static void main(String[] args) {
             try {
                 NcclUniqueId id = NcclUniqueId.create();
-                NcclMultiProcessWorker.runRank(id, 1, 0, TornadoExecutionPlan.getDevice(Integer.parseInt(args[0]), Integer.parseInt(args[1])));
+                NcclMultiProcessWorker.runRank(id, 1, 0, backendOfType(TornadoVMBackendType.valueOf(args[0])).getDevice(Integer.parseInt(args[1])));
                 System.out.println("NCCL-WORKER rank 0 OK");
                 System.exit(0);
             } catch (Throwable t) {
@@ -166,6 +169,21 @@ public class TestNcclMultiProcess extends TornadoTestBase {
                 t.printStackTrace(System.out);
                 System.exit(1);
             }
+        }
+
+        /** The backend of {@code type}; a backend that fails to start, such as OpenCL with no platform, is skipped. */
+        private static TornadoBackend backendOfType(TornadoVMBackendType type) {
+            TornadoRuntime runtime = TornadoRuntimeProvider.getTornadoRuntime();
+            for (int i = 0; i < runtime.getNumBackends(); i++) {
+                try {
+                    if (runtime.getBackendType(i) == type) {
+                        return runtime.getBackend(i);
+                    }
+                } catch (RuntimeException e) {
+                    // not the backend under test
+                }
+            }
+            throw new TornadoRuntimeException("No " + type + " backend is enabled");
         }
     }
 
