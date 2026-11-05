@@ -259,7 +259,13 @@ wavefront can write it. A wait the compiler cannot decide is also accepted and
 can still hang, for example when the writing thread is chosen from data, or in
 a kernel that uses ``localIdy`` or another second or third dimension. The check
 does not cover waits on global memory, whose writer may be another work-group
-(which does make progress).
+(which does make progress). The compiler does not know the work-group shape, so
+two launches of a rejected kernel would have completed: a kernel that uses only
+``localIdx`` launched with a 2D or 3D work-group, where a writer in another row
+releases the waiters (for example rows of 56 threads, the writer at
+``localIdx == 40`` and the waiters at ``localIdx < 8``: the writer of the second
+row is in a wavefront without waiters), and a work-group too small for any
+thread to reach the wait.
 
 Launching kernels from the device (CUDA Dynamic Parallelism)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

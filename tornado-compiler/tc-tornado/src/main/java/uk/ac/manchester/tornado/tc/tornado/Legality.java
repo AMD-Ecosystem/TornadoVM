@@ -177,6 +177,12 @@ public final class Legality {
      * {@code x} of a one-dimensional work-group is lane {@code x % wavefront} of wavefront
      * {@code x / wavefront}. A kernel that uses another dimension is not refused: the threads of other
      * rows, in other wavefronts, may write too.
+     *
+     * <p>The kernel is compiled without its launch shape, so two launches of a refused kernel complete:
+     * a kernel that uses only {@code localIdx} launched with a 2D or 3D work-group, where a writer in
+     * another row, in a wavefront without waiters, releases the waiters (rows of 56 threads, writer
+     * {@code localIdx == 40}, waiters {@code localIdx < 8}); and a work-group too small for any thread to
+     * reach the wait.
      */
     private static boolean sameWavefrontWait(Function function, DominatorTree dominators, LoopForest.Loop loop, List<Inst> exits, Inst read, int threads, int wavefront) {
         if (insts(function).anyMatch(i -> i.opcode() instanceof Opcode.Intrinsic && i.immediates().integer("dim").orElse(0L) != 0)) {

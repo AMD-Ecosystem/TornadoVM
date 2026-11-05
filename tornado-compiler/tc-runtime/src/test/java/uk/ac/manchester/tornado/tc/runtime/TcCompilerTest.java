@@ -235,6 +235,9 @@ public class TcCompilerTest {
         assertEquals(List.of(), localWaitKernel("otherWavefront"));
         assertEquals(List.of(), localWaitKernel("writersInTwoWavefronts"));
         assertEquals(List.of(), localWaitKernel("twoDimensional"));
+        // documented false positive: launched with rows of 56 threads, a writer in another row releases the
+        // waiters, but the check sees no work-group shape and refuses the kernel
+        assertEquals(List.of("TC-E4019"), localWaitKernel("rowsOfFiftySix"));
     }
 
     private static List<String> localWaitKernel(String method) {

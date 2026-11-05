@@ -133,6 +133,26 @@ public final class LocalWaitKernels {
     }
 
     /**
+     * Threads 0-7 wait for thread 40, in their wavefront. Launched with a two-dimensional work-group of
+     * rows of 56 threads, thread 40 of the second row is in a wavefront without waiters and sets the flag
+     * for every row, so the wait completes; the compiler sees no launch shape and refuses it.
+     */
+    public static void rowsOfFiftySix(KernelContext context, IntArray out) {
+        int[] flag = context.allocateIntLocalArray(1);
+        if (context.localIdx == 0) {
+            flag[0] = 0;
+        }
+        context.localBarrier();
+        if (context.localIdx == 40) {
+            context.atomicExchange(flag, 0, 1);
+        } else if (context.localIdx < 8) {
+            while (context.atomicCAS(flag, 0, 1, 1) != 1) {
+            }
+        }
+        out.set(context.globalIdx, context.localIdx);
+    }
+
+    /**
      * In each row of a two-dimensional work-group, threads 0-7 wait for thread 40. With rows of 56
      * threads, thread 40 of the second row is in a wavefront without waiters and sets the flag.
      */
