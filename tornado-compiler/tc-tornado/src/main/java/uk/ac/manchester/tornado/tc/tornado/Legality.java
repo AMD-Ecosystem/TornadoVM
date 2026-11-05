@@ -21,12 +21,15 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;
 
+import uk.ac.manchester.tornado.tc.ir.AddressSpace;
 import uk.ac.manchester.tornado.tc.ir.Diagnostic;
 import uk.ac.manchester.tornado.tc.ir.Function;
 import uk.ac.manchester.tornado.tc.ir.Inst;
 import uk.ac.manchester.tornado.tc.ir.Loc;
 import uk.ac.manchester.tornado.tc.ir.Opcode;
 import uk.ac.manchester.tornado.tc.ir.Type;
+import uk.ac.manchester.tornado.tc.ir.Value;
+import uk.ac.manchester.tornado.tc.ir.analysis.LoopForest;
 import uk.ac.manchester.tornado.tc.ir.target.TargetCaps;
 
 /**
@@ -40,6 +43,8 @@ import uk.ac.manchester.tornado.tc.ir.target.TargetCaps;
  * <li>TC-E4016: a device launch where kernels cannot launch kernels;</li>
  * <li>TC-E4017: tensor-core MMA or {@code cp.async} below CUDA sm_80, or MMA on an AMD GPU without matrix cores;</li>
  * <li>TC-E4018: FP8 tensor-core MMA below sm_89, or with an NVRTC older than 12.4 (PTX ISA 8.4);</li>
+ * <li>TC-E4019: on a 64-lane HIP wavefront, a loop that waits for another thread of the work-group to
+ * write local memory ({@link #localWait});</li>
  * <li>TC-E4010, TC-E4011: CUDA Tile kernels ({@link TileTyping#checkTarget}).</li>
  * </ul>
  */
@@ -85,6 +90,10 @@ public final class Legality {
             insts(function).filter(i -> intrinsic(i, "tornado.mma.")).findFirst()
                     .ifPresent(i -> problems.add(at(function, i, "TC-E4017", hipNoMatrixCores(target))));
         }
+        if (target.dialect() == TargetCaps.Dialect.HIP && target.warpSize() == 64) {
+            localWait(function).ifPresent(i -> problems.add(at(function, i, "TC-E4019",
+                    "this loop waits for a local-memory value that another thread of the work-group writes; a 64-lane wavefront runs two 32-lane warps in lockstep, so the wait can hang when the writer is in the same wavefront")));
+        }
         insts(function).filter(i -> intrinsic(i, "tornado.vector.lane_at") || intrinsic(i, "tornado.vector.insert_at")).findFirst()
                 .ifPresent(i -> problems.add(at(function, i, "TC-E1010", "vector lanes can only be accessed at a constant index (a loop over lanes must have a constant trip count to unroll)")));
                 if (TileTyping.usesTiles(function)) {
@@ -103,6 +112,110 @@ public final class Legality {
             return "tensor-core MMA is lowered to the gfx11 and gfx1200/gfx1201 WMMA and the CDNA MFMA instructions; " + target.arch() + " is not supported yet";
         }
         return "tensor-core MMA needs AMD matrix cores (MFMA on CDNA, WMMA on RDNA3 or RDNA4); the device is " + (target.arch().isEmpty() ? "an AMD GPU without them" : target.arch());
+    }
+
+    /**
+     * The first read of a loop that only waits for local memory to change: no value is carried from one
+     * iteration to the next, nothing in the loop writes memory or synchronises, every exit is decided by a
+     * local-memory read in the loop, and the kernel writes that local array elsewhere. Lanes of one
+     * wavefront do not make independent progress, so if the writer shares the waiting thread's wavefront the
+     * loop can spin before the write runs. A wait on global memory is not reported: its writer may be
+     * another work-group, which does progress.
+     */
+    static java.util.Optional<Inst> localWait(Function function) {
+        var loops = new LoopForest(function);
+        for (var header : function.blocks()) {
+            var loop = loops.loopWithHeader(header).orElse(null);
+            if (loop == null || !header.args().isEmpty()) {
+                continue;
+            }
+            var exits = new ArrayList<Inst>();
+            var waits = true;
+            for (var block : function.blocks()) {
+                if (!loop.contains(block)) {
+                    continue;
+                }
+                for (var inst : block.insts()) {
+                    if (inst.isTerminator()) {
+                        if (inst.successors().stream().anyMatch(s -> !loop.contains(s.target()))) {
+                            exits.add(inst);
+                        }
+                    } else if (!inst.opcode().isPure() && !(inst.opcode() instanceof Opcode.Load) && !(inst.opcode() instanceof Opcode.ArrayLoad) && !readOnlyCas(inst)) {
+                        waits = false;
+                    }
+                }
+            }
+            if (!waits || exits.isEmpty()) {
+                continue;
+            }
+            Inst read = null;
+            for (var exit : exits) {
+                var r = exit.opcode() instanceof Opcode.CondBranch ? localRead(exit.operand(0), loop) : null;
+                if (r == null) {
+                    read = null;
+                    break;
+                }
+                read = read == null ? r : read;
+            }
+            if (read != null && writtenOutside(root(read.operand(0)), loop, function)) {
+                return java.util.Optional.of(read);
+            }
+        }
+        return java.util.Optional.empty();
+    }
+
+    /** A compare-and-swap that stores the value it expects: a read of the location. */
+    private static boolean readOnlyCas(Inst inst) {
+        return intrinsic(inst, "tornado.atomic.cas") && inst.operandCount() == 3 && sameValue(inst.operand(1), inst.operand(2));
+    }
+
+    private static boolean sameValue(Value a, Value b) {
+        if (a == b) {
+            return true;
+        }
+        return a instanceof Inst x && b instanceof Inst y && x.opcode() instanceof Opcode.ConstInt(var u) && y.opcode() instanceof Opcode.ConstInt(var v) && u == v;
+    }
+
+    /** A local-memory read in the loop that {@code value} depends on through pure instructions, or null. */
+    private static Inst localRead(Value value, LoopForest.Loop loop) {
+        if (!(value instanceof Inst inst) || inst.block().map(b -> !loop.contains(b)).orElse(true)) {
+            return null;
+        }
+        if ((inst.opcode() instanceof Opcode.Load || readOnlyCas(inst)) && inst.operand(0).type() instanceof Type.PointerType(var space) && space == AddressSpace.SHARED) {
+            return inst;
+        }
+        if (!inst.opcode().isPure()) {
+            return null;
+        }
+        for (var operand : inst.operands()) {
+            var read = localRead(operand, loop);
+            if (read != null) {
+                return read;
+            }
+        }
+        return null;
+    }
+
+    private static Value root(Value pointer) {
+        while (pointer instanceof Inst inst && inst.opcode() instanceof Opcode.PointerOffset) {
+            pointer = inst.operand(0);
+        }
+        return pointer;
+    }
+
+    /** Whether an instruction outside the loop stores to, or atomically updates, the local array {@code root}. */
+    private static boolean writtenOutside(Value root, LoopForest.Loop loop, Function function) {
+        for (var block : function.blocks()) {
+            if (loop.contains(block)) {
+                continue;
+            }
+            for (var inst : block.insts()) {
+                if ((inst.opcode() instanceof Opcode.Store || intrinsic(inst, "tornado.atomic.")) && inst.operandCount() > 0 && root(inst.operand(0)) == root) {
+                    return true;
+                }
+            }
+        }
+        return false;
     }
 
     private static Stream<Inst> insts(Function function) {

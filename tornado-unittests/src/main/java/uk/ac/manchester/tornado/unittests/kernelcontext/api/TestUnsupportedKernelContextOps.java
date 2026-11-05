@@ -104,6 +104,22 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
         ctx.atomicMax(data, 0, ctx.globalIdx);
     }
 
+    /** The second 32-thread warp of each group of 64 waits for a flag that the first thread of the first warp sets. */
+    public static void localFlagWaitKernel(KernelContext ctx, IntArray out) {
+        int[] flag = ctx.allocateIntLocalArray(1);
+        if (ctx.localIdx == 0) {
+            flag[0] = 0;
+        }
+        ctx.localBarrier();
+        if (ctx.localIdx >= 32) {
+            while (ctx.atomicCAS(flag, 0, 1, 1) != 1) {
+            }
+        } else if (ctx.localIdx == 0) {
+            ctx.atomicExchange(flag, 0, 1);
+        }
+        out.set(ctx.globalIdx, ctx.localIdx);
+    }
+
     public static void simdgroupMatrixKernel(KernelContext ctx, FloatArray out) {
         Matrix8x8Float zero = ctx.simdgroupMatrixZero();
         ctx.simdgroupMatrixStore(zero, out, 0, 8);
@@ -284,6 +300,37 @@ public class TestUnsupportedKernelContextOps extends TornadoTestBase {
             throw new AssertionError("Failed without a TC diagnostic: " + thrown, thrown);
         }
         check.run();
+    }
+
+    // --- waiting on another warp of the wavefront: 64-lane AMD wavefronts --
+
+    /**
+     * TC-E4019: on a 64-lane AMD wavefront the two 32-lane warps run in lockstep, so a warp that waits for
+     * the other warp of its wavefront can hang; HIP refuses the kernel there. Where warps progress
+     * independently (CUDA, 32-lane AMD wavefronts) it runs. Not run on OpenCL or Metal: their AMD
+     * wave64 devices would hang.
+     */
+    @Test
+    public void testLocalFlagWaitAcrossWarps() {
+        assertNotBackend(TornadoVMBackendType.OPENCL);
+        assertNotBackend(TornadoVMBackendType.METAL);
+        IntArray out = new IntArray(SIZE);
+        out.init(-1);
+        try {
+            run("localWait", (taskGraph, context, id) -> taskGraph //
+                    .task(id, TestUnsupportedKernelContextOps::localFlagWaitKernel, context, out) //
+                    .transferToHost(DataTransferMode.EVERY_EXECUTION, out));
+        } catch (Throwable thrown) {
+            for (Throwable cause = thrown; cause != null; cause = cause.getCause()) {
+                if (cause.getMessage() != null && cause.getMessage().contains("TC-E4019")) {
+                    return;
+                }
+            }
+            throw new AssertionError("Failed without TC-E4019: " + thrown, thrown);
+        }
+        for (int i = 0; i < SIZE; i++) {
+            assertEquals(i % 64, out.get(i), "thread " + i);
+        }
     }
 
     // --- simdgroup matrices: Metal-only -----------------------------------

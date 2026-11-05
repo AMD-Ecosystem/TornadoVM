@@ -231,6 +231,30 @@ fallback, which would run without complaint and produce a wrong result.
 ``local only`` means the operation is supported when the array was allocated
 with ``KernelContext.allocateIntLocalArray(int)``; a global array is rejected.
 
+Warps on 64-lane AMD wavefronts (HIP backend)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The ``KernelContext`` warp operations (``simd*``, the warp votes, ``mma*``) are
+defined for 32-lane warps. On AMD GPUs with 32-lane wavefronts (RDNA) a warp is
+a wavefront. On AMD GPUs with 64-lane wavefronts (CDNA: ``gfx90a``, ``gfx942``,
+``gfx950``) the HIP backend runs each half of a wavefront as one warp, with the
+exact 32-lane results for shuffles, votes, reductions and MMA.
+
+The two warps of a 64-lane wavefront share one instruction stream, so they do
+not make independent forward progress the way NVIDIA warps do. A kernel in
+which threads of one warp wait in a loop for a value that a thread of the other
+warp of the same wavefront writes can hang where it completes on an NVIDIA GPU:
+the waiting loop can run first and never let the write execute. Order such
+accesses with ``localBarrier()`` instead.
+
+Where the compiler can see the pattern, a loop that only rereads local memory
+until it changes, with no barrier in it, in a kernel that writes that local
+array elsewhere, the HIP backend rejects the kernel on a 64-lane GPU with
+``TC-E4019`` instead of letting it hang. The check does not cover waits on
+global memory, whose writer may be another work-group (which does make
+progress), and it also rejects a wait whose writer is in another wavefront of
+the work-group, which would complete.
+
 Launching kernels from the device (CUDA Dynamic Parallelism)
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
